@@ -619,9 +619,12 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 /* ── Export Project Leads ── */
 async function exportProjectLeads() {
-  const btn = document.querySelector('[onclick="exportProjectLeads()"]');
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
-  btn.disabled  = true;
+  const btn     = document.getElementById('export-main-btn');
+  const origHTML = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+    btn.disabled  = true;
+  }
 
   try {
     const f = getFilters();
@@ -696,8 +699,10 @@ async function exportProjectLeads() {
     console.error('Export error:', e);
     showToast('Export failed: ' + e.message, 'error');
   } finally {
-    btn.innerHTML = '<i class="fas fa-file-excel"></i> Export Leads';
-    btn.disabled  = false;
+    if (btn) {
+      btn.innerHTML = origHTML;
+      btn.disabled  = false;
+    }
   }
 }
 
