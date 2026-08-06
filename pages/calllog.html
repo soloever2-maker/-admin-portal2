@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Call Log</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Call Log</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Customer Interactions</div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="loadAll()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- CHANNEL SWITCHER -->
+      <div class="fade-up" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <button id="ch-btn-all" class="btn btn-primary btn-sm" onclick="setChannel('all')" style="display:flex;align-items:center;gap:6px;">
+          🔀 All
+        </button>
+        <button id="ch-btn-calls" class="btn btn-ghost btn-sm" onclick="setChannel('calls')" style="display:flex;align-items:center;gap:6px;">
+          📞 Calls
+        </button>
+        <button id="ch-btn-whatsapp" class="btn btn-ghost btn-sm" onclick="setChannel('whatsapp')" style="display:flex;align-items:center;gap:6px;color:#16a34a;border-color:#16a34a;">
+          💬 WhatsApp
+        </button>
+        <span id="channel-label" style="margin-left:4px;font-size:12px;color:var(--muted);align-self:center;">Showing all channels</span>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up" style="grid-template-columns:repeat(5,1fr);">
+        <div class="kpi-card blue">
+          <span class="kpi-icon" id="k-total-icon">📊</span>
+          <div class="kpi-label" id="k-total-label">Total</div>
+          <div class="kpi-value" id="k-total">—</div>
+        </div>
+        <div class="kpi-card" style="border-top-color:#2563eb;">
+          <span class="kpi-icon">📞</span>
+          <div class="kpi-label">Calls</div>
+          <div class="kpi-value" id="k-calls">—</div>
+        </div>
+        <div class="kpi-card" style="border-top-color:#16a34a;">
+          <span class="kpi-icon">💬</span>
+          <div class="kpi-label">WhatsApp</div>
+          <div class="kpi-value" id="k-wa">—</div>
+        </div>
+        <div class="kpi-card gold">
+          <span class="kpi-icon">📅</span>
+          <div class="kpi-label">Today</div>
+          <div class="kpi-value" id="k-today">—</div>
+        </div>
+        <div class="kpi-card green">
+          <span class="kpi-icon">🏢</span>
+          <div class="kpi-label">Project Leads</div>
+          <div class="kpi-value" id="k-projects">—</div>
+        </div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-phone-volume" style="color:var(--gold)"></i>
+            Call Log
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <div class="search-wrap" style="min-width:220px;">
+              <i class="fas fa-search"></i>
+              <input type="text" class="search-input" id="search-input"
+                placeholder="Search name, mobile, reason..."
+                oninput="handleSearch(this.value)">
+            </div>
+            <input type="date" id="date-from" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+            <input type="date" id="date-to"   class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+            <select id="month-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="applyMonthFilter()">
+              <option value="">All Months</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            <select id="year-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="applyMonthFilter()">
+              <option value="">All Years</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+            </select>
+            <select id="agent-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+              <option value="">All Agents</option>
+            </select>
+            <select id="reason-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+              <option value="">All Reasons</option>
+            </select>
+            <!-- Export Dropdown -->
+            <div class="export-dd" style="position:relative;">
+              <button id="export-main-btn"
+                onclick="toggleExportMenu(event)"
+                style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--gold);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                <i class="fas fa-file-excel"></i> Export
+                <i class="fas fa-chevron-down" style="font-size:9px;opacity:0.7;"></i>
+              </button>
+              <div id="export-menu"
+                style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:190px;
+                       background:var(--surface);border:1px solid var(--border);border-radius:10px;
+                       box-shadow:0 8px 28px rgba(0,0,0,0.18);z-index:200;overflow:hidden;">
+                <button
+                  onclick="exportProjectLeads(); closeExportMenu();"
+                  class="export-opt"
+                  onmouseover="this.style.background='var(--surface2)'"
+                  onmouseout="this.style.background='transparent'">
+                  <i class="fas fa-building" style="color:var(--gold);width:16px;"></i>
+                  Project Leads Only
+                </button>
+                <div style="height:1px;background:var(--border);margin:0 10px;"></div>
+                <button
+                  onclick="exportAllCalls(); closeExportMenu();"
+                  class="export-opt"
+                  onmouseover="this.style.background='var(--surface2)'"
+                  onmouseout="this.style.background='transparent'">
+                  <i class="fas fa-phone-volume" style="color:#2563eb;width:16px;"></i>
+                  All Calls
+                </button>
+              </div>
+            </div>
+            <style>
+              .export-opt {
+                display:flex; align-items:center; gap:10px;
+                width:100%; text-align:left; padding:10px 14px;
+                border:none; background:transparent; cursor:pointer;
+                font-size:13px; font-weight:600; color:var(--text);
+                transition:background 0.15s;
+              }
+            </style>
+          </div>
+        </div>
+
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Date/Time</th>
+                  <th>Customer</th>
+                  <th>Mobile</th>
+                  <th>Reason</th>
+                  <th>Agent</th>
+                  <th>Source</th>
+                  <th>Direction</th>
+                  <th>Channel</th>
+                  <th>Media</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="calls-tbody">
+                <tr><td colspan="10"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--border);">
+            <span id="pagination-info" style="font-size:12px;color:var(--muted);"></span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost btn-sm" id="prev-btn" onclick="prevPage()">
+                <i class="fas fa-chevron-left"></i> Prev
+              </button>
+              <button class="btn btn-ghost btn-sm" id="next-btn" onclick="nextPage()">
+                Next <i class="fas fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Call Details</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const PAGE_SIZE = 50;
+let currentPage = 0;
+let totalCount  = 0;
+let searchQuery = '';
+let searchTimer = null;
+let activeChannel = 'all'; // 'all' | 'calls' | 'whatsapp'
+
+// ── Channel Switcher ──
+function setChannel(ch) {
+  activeChannel = ch;
+  currentPage = 0;
+
+  ['all','calls','whatsapp'].forEach(c => {
+    const btn = document.getElementById('ch-btn-' + c);
+    if (btn) { btn.className = c === ch ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'; }
+  });
+  // restore green tint on WA button when inactive
+  const waBtn = document.getElementById('ch-btn-whatsapp');
+  if (waBtn && ch !== 'whatsapp') waBtn.style.cssText = 'display:flex;align-items:center;gap:6px;color:#16a34a;border-color:#86efac;';
+  else if (waBtn) waBtn.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+  const labels = { all: 'Showing all channels', calls: 'Showing 📞 Calls only', whatsapp: 'Showing 💬 WhatsApp only' };
+  const lbl = document.getElementById('channel-label');
+  if (lbl) lbl.innerText = labels[ch];
+
+  loadAll();
+}
+
+// ── Date Utilities ──
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function localMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function localDateToUTCStart(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+}
+function localDateToUTCEnd(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+}
+
+const TODAY = localToday();
+const MONTH = localMonth();
+
+// ── Get current filter values ──
+function getFilters() {
+  return {
+    dateFrom: document.getElementById('date-from').value,
+    dateTo:   document.getElementById('date-to').value,
+    agent:    document.getElementById('agent-filter').value,
+    reason:   document.getElementById('reason-filter').value,
+  };
+}
+
+// ── Tables to query based on activeChannel ──
+function getTables() {
+  if (activeChannel === 'calls')    return ['call_logs'];
+  if (activeChannel === 'whatsapp') return ['whatsapp_logs'];
+  return ['call_logs', 'whatsapp_logs'];
+}
+
+// ── Build filtered query for a given table ──
+function applyFilters(q, filters) {
+  if (filters.dateFrom) q = q.gte('logged_at', localDateToUTCStart(filters.dateFrom));
+  if (filters.dateTo)   q = q.lte('logged_at', localDateToUTCEnd(filters.dateTo));
+  if (filters.agent)    q = q.ilike('agent_name', filters.agent);
+  if (filters.reason)   q = q.eq('call_reason', filters.reason);
+  if (searchQuery)      q = q.or(`customer_name.ilike.%${searchQuery}%,customer_mobile.ilike.%${searchQuery}%,call_reason.ilike.%${searchQuery}%`);
+  return q;
+}
+
+// ── Init ──
+async function init() {
+  document.getElementById('date-from').value = MONTH + '-01';
+  document.getElementById('date-to').value   = TODAY;
+
+  const { data: agents } = await db.from('agents').select('formal_name').order('formal_name');
+  const agentSel = document.getElementById('agent-filter');
+  (agents||[]).forEach(a => agentSel.add(new Option(a.formal_name, a.formal_name)));
+
+  const { data: reasons } = await db.from('call_reasons').select('name').eq('is_active',true).order('name');
+  const reasonSel = document.getElementById('reason-filter');
+  (reasons||[]).forEach(r => reasonSel.add(new Option(r.name, r.name)));
+
+  await loadAll();
+}
+
+// ── Load All ──
+async function loadAll() {
+  await Promise.all([loadKPIs(), loadCalls()]);
+}
+
+// ── KPIs ──
+async function loadKPIs() {
+  const f = getFilters();
+
+  // Count helper for a table
+  async function countTable(table, extraFilter) {
+    let q = db.from(table).select('*', { count: 'exact', head: true });
+    q = applyFilters(q, f);
+    if (extraFilter) q = extraFilter(q);
+    const { count } = await q;
+    return count || 0;
+  }
+
+  // Today count
+  async function countToday(table) {
+    let q = db.from(table).select('*', { count: 'exact', head: true })
+      .gte('logged_at', localDateToUTCStart(TODAY))
+      .lte('logged_at', localDateToUTCEnd(TODAY));
+    if (f.agent)  q = q.ilike('agent_name', f.agent);
+    if (f.reason) q = q.eq('call_reason', f.reason);
+    if (searchQuery) q = q.or(`customer_name.ilike.%${searchQuery}%,customer_mobile.ilike.%${searchQuery}%,call_reason.ilike.%${searchQuery}%`);
+    const { count } = await q;
+    return count || 0;
+  }
+
+  const tables = getTables();
+
+  const [callsCount, waCount, todayCalls, todayWa] = await Promise.all([
+    tables.includes('call_logs')    ? countTable('call_logs')    : Promise.resolve(0),
+    tables.includes('whatsapp_logs')? countTable('whatsapp_logs'): Promise.resolve(0),
+    tables.includes('call_logs')    ? countToday('call_logs')    : Promise.resolve(0),
+    tables.includes('whatsapp_logs')? countToday('whatsapp_logs'): Promise.resolve(0),
+  ]);
+
+  const total = callsCount + waCount;
+  const today = todayCalls + todayWa;
+
+  document.getElementById('k-total').innerText = total;
+  document.getElementById('k-calls').innerText = callsCount;
+  document.getElementById('k-wa').innerText    = waCount;
+  document.getElementById('k-today').innerText = today;
+
+  // Project Leads — only from call_logs
+  if (tables.includes('call_logs')) {
+    const { data: projReasons } = await db.from('call_reasons').select('name').eq('category','Projects Leads');
+    const projNames = (projReasons||[]).map(r => r.name);
+    if (projNames.length) {
+      let projQ = db.from('call_logs').select('*', { count:'exact', head:true });
+      projQ = applyFilters(projQ, { ...f, reason: '' });
+      projQ = projQ.in('call_reason', projNames);
+      const { count: projects } = await projQ;
+      document.getElementById('k-projects').innerText = projects || 0;
+    } else {
+      document.getElementById('k-projects').innerText = 0;
+    }
+  } else {
+    document.getElementById('k-projects').innerText = '—';
+  }
+}
+
+// ── Notes Helpers ──
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderNoteCell(note) {
+  if (!note || !note.trim()) {
+    return `<span style="color:var(--muted);">—</span>`;
+  }
+  const preview = note.length > 25 ? note.slice(0, 25) + '…' : note;
+  return `<span title="${escapeHtml(note)}" style="cursor:help;display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:2px 8px;">
+    📝 ${escapeHtml(preview)}
+  </span>`;
+}
+
+// ── Load Calls ──
+async function loadCalls() {
+  const tbody = document.getElementById('calls-tbody');
+  const f     = getFilters();
+  const tables = getTables();
+  const cols = 10;
+
+  tbody.innerHTML = `<tr><td colspan="${cols}"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>`;
+
+  try {
+
+// Fetch from each table
+async function fetchFromTable(table) {
+  // أول حاجة نجيب العدد الكلي عشان نعرف الـ range هيبقى صالح ولا لأ
+  let countQ = db.from(table).select('*', { count: 'exact', head: true });
+  countQ = applyFilters(countQ, f);
+  const { count } = await countQ;
+  const total = count || 0;
+
+  const from = currentPage * PAGE_SIZE;
+  // لو الصفحة المطلوبة أكبر من عدد سجلات الجدول ده، رجّع array فاضية
+  // بدل ما نطلب range غلط ويعمل 416
+  if (from >= total) {
+    return { data: [], count: total };
+  }
+
+  let q = db.from(table).select('*');
+  q = applyFilters(q, f);
+  const { data, error } = await q
+    .order('logged_at', { ascending: false })
+    .range(from, from + PAGE_SIZE - 1);
+  if (error) throw error;
+  return { data: (data||[]).map(r => ({ ...r, _src: table === 'whatsapp_logs' ? 'wa' : 'call' })), count: total };
+}
+    
+    let allData = [], allCount = 0;
+
+    if (tables.length === 1) {
+      const res = await fetchFromTable(tables[0]);
+      allData  = res.data;
+      allCount = res.count;
+    } else {
+      // For "All": fetch both and merge (fetch 2x PAGE_SIZE from each, merge, take top PAGE_SIZE)
+      // Count queries separately for accurate total
+      const [resC, resW] = await Promise.all([
+        fetchFromTable('call_logs'),
+        fetchFromTable('whatsapp_logs'),
+      ]);
+      allCount = resC.count + resW.count;
+      allData  = [...resC.data, ...resW.data]
+        .sort((a,b) => new Date(b.logged_at) - new Date(a.logged_at))
+        .slice(0, PAGE_SIZE);
+    }
+
+    totalCount = allCount;
+    updatePagination();
+
+    if (!allData.length) {
+      tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state"><span class="empty-icon">📭</span>No records found</div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = allData.map(c => {
+      const srcBadge = c._src === 'wa'
+        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">💬 WA</span>`
+        : `<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:#2563eb;border:1px solid #93c5fd;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">📞 Call</span>`;
+      return `
+        <tr>
+          <td style="font-size:11px;color:var(--muted);white-space:nowrap;">${formatDateTime(c.logged_at)}</td>
+          <td style="font-weight:700;">${c.customer_name || '—'}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${c.customer_mobile || '—'}</td>
+          <td><span style="font-size:12px;font-weight:600;color:var(--text);">${c.call_reason || '—'}</span></td>
+          <td style="font-size:12px;">${c.agent_name || '—'}</td>
+          <td>${srcBadge}</td>
+          <td>${c.call_direction === 'outbound'
+            ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.12);color:#D97706;border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">📤 Out</span>`
+            : `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,0.12);color:#059669;border:1px solid rgba(16,185,129,0.3);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">📥 In</span>`
+          }</td>
+          <td><span class="badge badge-info" style="font-size:10px;">${c.communication_channel || '—'}</span></td>
+          <td style="font-size:12px;color:var(--muted);">${c.media_source || '—'}</td>
+          <td>${renderNoteCell(c.extra_notes)}</td>
+          <td>
+            <button class="btn btn-info btn-sm btn-icon" onclick="viewRecord('${c.id}','${c._src}')" title="View">
+              <i class="fas fa-eye"></i>
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state"><span class="empty-icon">❌</span>Failed to load</div></td></tr>`;
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── View Record (Call or WA) ──
+async function viewRecord(id, src) {
+  const table = src === 'wa' ? 'whatsapp_logs' : 'call_logs';
+  const { data: c } = await db.from(table).select('*').eq('id', id).single();
+  if (!c) return;
+
+  const srcLabel = src === 'wa' ? '💬 WhatsApp' : '📞 Call';
+  const srcColor = src === 'wa' ? '#16a34a' : '#2563eb';
+  const srcBg    = src === 'wa' ? 'rgba(22,163,74,0.08)' : 'rgba(37,99,235,0.08)';
+  const srcBorder= src === 'wa' ? 'rgba(22,163,74,0.2)'  : 'rgba(37,99,235,0.2)';
+
+  const fields = [
+    ['Customer Name',        c.customer_name],
+    ['Customer Mobile',      c.customer_mobile],
+    ['Alt Mobile',           c.customer_mobile2],
+    ['Email',                c.customer_email],
+    ['Call Reason',          c.call_reason],
+    ['Agent',                c.agent_name],
+    ['Direction',            c.call_direction === 'outbound' ? '📤 Outbound' : '📥 Inbound'],
+    ['Channel',              c.communication_channel],
+    ['Media Source',         c.media_source],
+    ['Business Relativity',  c.business_relativity],
+    ['Sales Call Requested', c.sales_call_requested],
+    ['Budget',               c.budget],
+    ['Unit Type',            c.unit_type],
+    ['Date/Time',            formatDateTime(c.logged_at)],
+  ];
+
+  document.getElementById('panel-title').innerText = c.customer_name || 'Record Details';
+  document.getElementById('panel-body').innerHTML = `
+    <div style="background:${srcBg};border:1px solid ${srcBorder};border-radius:12px;padding:12px 16px;margin-bottom:16px;">
+      <div style="font-size:14px;font-weight:800;color:${srcColor};">${srcLabel} — ${c.call_reason || '—'}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${c.agent_name || '—'} · ${formatDateTime(c.logged_at)}</div>
+    </div>
+    ${fields.filter(([,v])=>v).map(([k,v])=>`
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">${k}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--text);text-align:right;max-width:60%;">${v}</span>
+      </div>
+    `).join('')}
+    ${c.extra_notes ? `
+      <div style="margin-top:14px;padding:12px;background:var(--surface2);border-radius:10px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Extra Notes</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6;">${c.extra_notes}</div>
+      </div>
+    ` : ''}
+  `;
+  document.getElementById('panel-footer').innerHTML = `<button class="btn btn-ghost" onclick="closePanel()">Close</button>`;
+  openPanel();
+}
+
+// ── Keep old viewCall alias for backwards compat ──
+function viewCall(id) { viewRecord(id, 'call'); }
+
+// ── Search ──
+function handleSearch(val) {
+  searchQuery = val;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { currentPage = 0; loadAll(); }, 400);
+}
+
+// ── Pagination ──
+function updatePagination() {
+  const start = currentPage * PAGE_SIZE + 1;
+  const end   = Math.min((currentPage + 1) * PAGE_SIZE, totalCount);
+  document.getElementById('pagination-info').innerText = totalCount ? `Showing ${start}–${end} of ${totalCount}` : '';
+  document.getElementById('prev-btn').disabled = currentPage === 0;
+  document.getElementById('next-btn').disabled = end >= totalCount;
+}
+
+function prevPage() { if (currentPage > 0) { currentPage--; loadCalls(); } }
+function nextPage() { currentPage++; loadCalls(); }
+
+// ── Month/Year Filter ──
+function applyMonthFilter() {
+  const month = document.getElementById('month-filter').value;
+  const year  = document.getElementById('year-filter').value;
+
+  if (month && year) {
+    const lastDay = new Date(year, month, 0).getDate();
+    document.getElementById('date-from').value = `${year}-${month}-01`;
+    document.getElementById('date-to').value   = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
+  } else if (year && !month) {
+    document.getElementById('date-from').value = `${year}-01-01`;
+    document.getElementById('date-to').value   = `${year}-12-31`;
+  } else {
+    document.getElementById('date-from').value = '';
+    document.getElementById('date-to').value   = '';
+  }
+
+  currentPage = 0;
+  loadAll();
+}
+
+// ── Helpers ──
+function formatDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short' }) + ' ' +
+         dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+/* ── Export Project Leads ── */
+async function exportProjectLeads() {
+  const btn = document.querySelector('[onclick="exportProjectLeads()"]');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+  btn.disabled  = true;
+
+  try {
+    const f = getFilters();
+
+    // 1. جيب أسماء الـ reasons اللي category بتاعها "Projects Leads"
+    const { data: projReasons } = await db.from('call_reasons').select('name').eq('category', 'Projects Leads');
+    const projNames = (projReasons || []).map(r => r.name);
+    if (!projNames.length) {
+      showToast('No "Projects Leads" reasons found in call_reasons table.', 'error');
+      return;
+    }
+
+    // 2. جيب كل الـ records في الفترة المحددة بدون pagination
+    let q = db.from('call_logs')
+      .select('logged_at,customer_name,customer_mobile,customer_mobile2,call_reason,agent_name,call_direction,communication_channel,extra_notes')
+      .in('call_reason', projNames)
+      .order('logged_at', { ascending: false });
+
+    if (f.dateFrom) q = q.gte('logged_at', localDateToUTCStart(f.dateFrom));
+    if (f.dateTo)   q = q.lte('logged_at', localDateToUTCEnd(f.dateTo));
+    if (f.agent)    q = q.ilike('agent_name', f.agent);
+
+    // Supabase default limit 1000 — loop if more
+    let allRecords = [], from = 0, BATCH = 1000;
+    while (true) {
+      const { data, error } = await q.range(from, from + BATCH - 1);
+      if (error) throw error;
+      allRecords = allRecords.concat(data || []);
+      if (!data || data.length < BATCH) break;
+      from += BATCH;
+    }
+
+    if (!allRecords.length) {
+      showToast('No Project Leads found for the selected period.', 'error');
+      return;
+    }
+
+    // 3. بناء CSV
+    const headers = ['Date', 'Time', 'Customer Name', 'Mobile', 'Alt Mobile', 'Reason', 'Agent', 'Direction', 'Channel', 'Notes'];
+    const rows = allRecords.map(r => {
+      const dt   = r.logged_at ? new Date(r.logged_at) : null;
+      const date = dt ? dt.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }) : '';
+      const time = dt ? dt.toLocaleTimeString('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit' }) : '';
+      return [
+        date,
+        time,
+        r.customer_name         || '',
+        r.customer_mobile       || '',
+        r.customer_mobile2      || '',
+        r.call_reason           || '',
+        r.agent_name            || '',
+        r.call_direction === 'outbound' ? 'Outbound' : 'Inbound',
+        r.communication_channel || '',
+        (r.extra_notes || '').replace(/\n/g, ' '),
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csv  = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const fromLabel = f.dateFrom || 'start';
+    const toLabel   = f.dateTo   || 'today';
+    a.href     = url;
+    a.download = `ProjectLeads_${fromLabel}_to_${toLabel}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast(`Exported ${allRecords.length} Project Leads ✓`, 'success');
+
+  } catch(e) {
+    console.error('Export error:', e);
+    showToast('Export failed: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '<i class="fas fa-file-excel"></i> Export Leads';
+    btn.disabled  = false;
+  }
+}
+
+// ── Export Dropdown ──
+function toggleExportMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('export-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+function closeExportMenu() {
+  const menu = document.getElementById('export-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.export-dd')) closeExportMenu();
+});
+
+// ── Export All Calls ──
+async function exportAllCalls() {
+  const btn = document.getElementById('export-main-btn');
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+  btn.disabled = true;
+
+  try {
+    const f = getFilters();
+    const tables = getTables(); // respects active channel filter
+
+    async function fetchAllFromTable(table) {
+      let q = db.from(table)
+        .select('logged_at,customer_name,customer_mobile,customer_mobile2,call_reason,agent_name,call_direction,communication_channel,media_source,extra_notes')
+        .order('logged_at', { ascending: false });
+
+      if (f.dateFrom) q = q.gte('logged_at', localDateToUTCStart(f.dateFrom));
+      if (f.dateTo)   q = q.lte('logged_at', localDateToUTCEnd(f.dateTo));
+      if (f.agent)    q = q.ilike('agent_name', f.agent);
+      if (f.reason)   q = q.eq('call_reason', f.reason);
+      if (searchQuery) q = q.or(
+        `customer_name.ilike.%${searchQuery}%,customer_mobile.ilike.%${searchQuery}%,call_reason.ilike.%${searchQuery}%`
+      );
+
+      let allRecords = [], from = 0, BATCH = 1000;
+      while (true) {
+        const { data, error } = await q.range(from, from + BATCH - 1);
+        if (error) throw error;
+        const src = table === 'whatsapp_logs' ? 'WhatsApp' : 'Call';
+        allRecords = allRecords.concat((data || []).map(r => ({ ...r, _src: src })));
+        if (!data || data.length < BATCH) break;
+        from += BATCH;
+      }
+      return allRecords;
+    }
+
+    let allRecords = [];
+    if (tables.includes('call_logs'))     allRecords = allRecords.concat(await fetchAllFromTable('call_logs'));
+    if (tables.includes('whatsapp_logs')) allRecords = allRecords.concat(await fetchAllFromTable('whatsapp_logs'));
+
+    allRecords.sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
+
+    if (!allRecords.length) {
+      showToast('No records found for the selected period.', 'error');
+      return;
+    }
+
+    const csvHeaders = ['Date', 'Time', 'Customer Name', 'Mobile', 'Alt Mobile',
+                        'Reason', 'Agent', 'Channel', 'Source', 'Media', 'Notes'];
+
+    const rows = allRecords.map(r => {
+      const dt   = r.logged_at ? new Date(r.logged_at) : null;
+      const date = dt ? dt.toLocaleDateString('en-CA',  { timeZone: 'Africa/Cairo' }) : '';
+      const time = dt ? dt.toLocaleTimeString('en-GB',  { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit' }) : '';
+      return [
+        date, time,
+        r.customer_name         || '',
+        r.customer_mobile       || '',
+        r.customer_mobile2      || '',
+        r.call_reason           || '',
+        r.agent_name            || '',
+        r.call_direction === 'outbound' ? 'Outbound' : 'Inbound',
+        r.communication_channel || '',
+        r._src                  || '',
+        r.media_source          || '',
+        (r.extra_notes || '').replace(/\n/g, ' '),
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csv  = '\uFEFF' + [csvHeaders.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `AllCalls_${f.dateFrom || 'start'}_to_${f.dateTo || 'today'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast(`Exported ${allRecords.length} records ✓`, 'success');
+
+  } catch(e) {
+    console.error('Export error:', e);
+    showToast('Export failed: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = origHTML;
+    btn.disabled  = false;
+  }
+}
+
+init();
+</script>
+</body>
+</html>

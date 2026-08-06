@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Reports</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+.report-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
+.report-tab{padding:8px 18px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:.15s;}
+.report-tab.active{background:var(--gold);color:#000;border-color:var(--gold);}
+.report-section{display:none;}
+.report-section.active{display:block;}
+.stat-table{width:100%;border-collapse:collapse;font-size:13px;}
+.stat-table th{background:rgba(212,175,55,0.08);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);}
+.stat-table td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.03);}
+.stat-table tr:hover td{background:rgba(255,255,255,0.02);}
+.stat-table tr:last-child td{border-bottom:none;}
+.stat-table .num{font-weight:800;font-size:14px;text-align:right;}
+.stat-table .pct{font-size:11px;color:var(--muted);text-align:right;}
+.copy-btn{background:linear-gradient(135deg,#D4AF37,#F4D03F);color:#000;border:none;padding:10px 20px;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;}
+.copy-btn:hover{opacity:.9;}
+.biz-card{border-radius:14px;padding:18px 20px;display:flex;align-items:center;gap:16px;}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.total-row td{font-weight:800;background:rgba(212,175,55,0.06)!important;border-top:2px solid rgba(212,175,55,0.3);}
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Reports</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Analytics & Insights</div>
+      </div>
+      <div class="topbar-right">
+        <select id="month-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <select id="year-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="2026">2026</option><option value="2025">2025</option>
+        </select>
+        <button class="copy-btn" onclick="copyReport()">
+          <i class="fas fa-copy"></i> Copy Report
+        </button>
+        <button class="copy-btn" onclick="exportExcel()" id="export-excel-btn" style="background:linear-gradient(135deg,#10B981,#34D399);">
+          <i class="fas fa-file-excel"></i> Export Excel
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="loadAll()"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px;">
+        <div class="kpi-card blue"><span class="kpi-icon">📞</span><div class="kpi-label">Total Calls</div><div class="kpi-value" id="r-calls">—</div></div>
+        <div class="kpi-card green"><span class="kpi-icon">🏢</span><div class="kpi-label">Project Leads</div><div class="kpi-value" id="r-leads">—</div></div>
+        <div class="kpi-card gold"><span class="kpi-icon">💼</span><div class="kpi-label">Business %</div><div class="kpi-value" id="r-bizpct">—</div></div>
+        <div class="kpi-card purple"><span class="kpi-icon">📈</span><div class="kpi-label">Avg Conformance</div><div class="kpi-value" id="r-conf">—</div></div>
+        <div class="kpi-card orange"><span class="kpi-icon">🎧</span><div class="kpi-label">Avg AHT</div><div class="kpi-value" id="r-aht">—</div></div>
+        <div class="kpi-card" style="border-top-color:#ef4444"><span class="kpi-icon">⏳</span><div class="kpi-label">Pending Requests</div><div class="kpi-value" id="r-pending">—</div></div>
+      </div>
+
+      <!-- TABS -->
+      <div class="report-tabs">
+        <button class="report-tab active" onclick="switchTab('calls',this)">📞 Calls by Reason</button>
+        <button class="report-tab" onclick="switchTab('agents',this)">👥 Calls by Agent</button>
+        <button class="report-tab" onclick="switchTab('daily',this)">📅 Daily Breakdown</button>
+        <button class="report-tab" onclick="switchTab('kpi',this)">📊 Agent KPIs</button>
+        <button class="report-tab" onclick="switchTab('requests',this)">📋 Requests</button>
+        <button class="report-tab" onclick="switchTab('whatsapp',this)" style="color:#16a34a;">💬 WhatsApp</button>
+        <button class="report-tab" onclick="switchTab('ai',this)">🤖 AI Report</button>
+      </div>
+
+      <!-- TAB: CALLS BY REASON -->
+      <div class="report-section active" id="section-calls">
+        <div class="chart-grid">
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-chart-pie" style="color:var(--gold)"></i> Calls by Reason</div>
+              <span id="calls-total-label" style="font-size:11px;color:var(--muted);"></span>
+            </div>
+            <div style="padding:16px;height:280px;display:flex;align-items:center;justify-content:center;">
+              <canvas id="reason-chart"></canvas>
+            </div>
+          </div>
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-list" style="color:var(--gold)"></i> MTD Breakdown</div>
+            </div>
+            <div class="section-body no-pad">
+              <table class="stat-table">
+                <thead><tr><th>Call Reason</th><th style="text-align:right;">Calls</th><th style="text-align:right;">%</th></tr></thead>
+                <tbody id="reason-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="section-card fade-up" style="margin-top:16px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-briefcase" style="color:#10b981"></i> Business Relativity</div>
+          </div>
+          <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+            <div class="biz-card" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);">
+              <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Business Related</div>
+              <div style="font-size:36px;font-weight:900;color:#10b981;" id="biz-count">—</div></div>
+              <div style="font-size:32px;font-weight:900;color:#10b981;margin-left:auto;" id="biz-pct">—%</div>
+            </div>
+            <div class="biz-card" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);">
+              <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Non-Business</div>
+              <div style="font-size:36px;font-weight:900;color:#ef4444;" id="nonbiz-count">—</div></div>
+              <div style="font-size:32px;font-weight:900;color:#ef4444;margin-left:auto;" id="nonbiz-pct">—%</div>
+            </div>
+            <div class="biz-card" style="background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.3);">
+              <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Project Leads</div>
+              <div style="font-size:36px;font-weight:900;color:var(--gold);" id="proj-count">—</div></div>
+              <div style="font-size:32px;font-weight:900;color:var(--gold);margin-left:auto;" id="proj-pct">—%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: CALLS BY AGENT -->
+      <div class="report-section" id="section-agents">
+        <div class="chart-grid">
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-chart-bar" style="color:var(--gold)"></i> Calls by Agent</div>
+            </div>
+            <div style="padding:16px;height:280px;"><canvas id="agent-chart"></canvas></div>
+          </div>
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-list" style="color:var(--gold)"></i> Agent Breakdown</div>
+            </div>
+            <div class="section-body no-pad">
+              <table class="stat-table">
+                <thead><tr><th>Agent</th><th style="text-align:right;">Calls</th><th style="text-align:right;">%</th></tr></thead>
+                <tbody id="agent-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="section-card fade-up" style="margin-top:16px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-th" style="color:var(--gold)"></i> Agent × Call Reason Matrix</div>
+          </div>
+          <div class="section-body no-pad" style="overflow-x:auto;">
+            <table class="stat-table" id="matrix-table">
+              <thead><tr id="matrix-head"></tr></thead>
+              <tbody id="matrix-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: DAILY -->
+      <div class="report-section" id="section-daily">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-chart-line" style="color:var(--gold)"></i> Daily Call Trend</div>
+          </div>
+          <div style="padding:16px;height:220px;"><canvas id="trend-chart"></canvas></div>
+        </div>
+        <div class="section-card fade-up" style="margin-top:16px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-calendar-alt" style="color:var(--gold)"></i> Daily Detail Table</div>
+          </div>
+          <div class="section-body no-pad" style="overflow-x:auto;">
+            <table class="stat-table"><thead><tr id="daily-head"></tr></thead><tbody id="daily-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: KPIs -->
+      <div class="report-section" id="section-kpi">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-table" style="color:var(--gold)"></i> Agent Performance — <span id="kpi-month-label"></span></div>
+          </div>
+          <div class="section-body no-pad" style="overflow-x:auto;">
+            <table class="nos-table">
+              <thead><tr><th>Agent</th><th>Conformance</th><th>Missing Time</th><th>Net Missing</th><th>AHT</th><th>Calls</th><th>Excuses</th><th>Quality</th><th>Annual Left</th></tr></thead>
+              <tbody id="kpi-table-body"><tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: REQUESTS -->
+      <div class="report-section" id="section-requests">
+        <div class="chart-grid">
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-chart-pie" style="color:var(--gold)"></i> Requests Overview</div>
+            </div>
+            <div style="padding:16px;height:260px;display:flex;align-items:center;justify-content:center;">
+              <canvas id="requests-chart"></canvas>
+            </div>
+          </div>
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-list" style="color:var(--gold)"></i> Requests by Type</div>
+            </div>
+            <div class="section-body no-pad">
+              <table class="stat-table">
+                <thead><tr><th>Type</th><th style="text-align:right;">Pending</th><th style="text-align:right;">Approved</th><th style="text-align:right;">Rejected</th></tr></thead>
+                <tbody id="requests-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: WHATSAPP -->
+      <div class="report-section" id="section-whatsapp">
+
+        <!-- WA KPI Cards -->
+        <div class="kpi-grid fade-up" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+          <div class="kpi-card" style="border-top-color:#16a34a;"><span class="kpi-icon">💬</span><div class="kpi-label">Total WA</div><div class="kpi-value" id="wa-total">—</div></div>
+          <div class="kpi-card gold"><span class="kpi-icon">📅</span><div class="kpi-label">Today</div><div class="kpi-value" id="wa-today">—</div></div>
+          <div class="kpi-card green"><span class="kpi-icon">🏢</span><div class="kpi-label">Project Leads</div><div class="kpi-value" id="wa-leads">—</div></div>
+          <div class="kpi-card blue"><span class="kpi-icon">📤</span><div class="kpi-label">Sales Req.</div><div class="kpi-value" id="wa-sales">—</div></div>
+          <div class="kpi-card purple"><span class="kpi-icon">💼</span><div class="kpi-label">Business %</div><div class="kpi-value" id="wa-bizpct">—</div></div>
+        </div>
+
+        <div class="chart-grid">
+          <!-- WA by Reason -->
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-comment-dots" style="color:#16a34a"></i> WA by Reason</div>
+              <span id="wa-reason-total" style="font-size:11px;color:var(--muted);"></span>
+            </div>
+            <div id="wa-reason-body" style="padding:0;">
+              <div class="loading-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- WA by Agent -->
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-users" style="color:#16a34a"></i> WA by Agent</div>
+            </div>
+            <div id="wa-agent-body" style="padding:0;">
+              <div class="loading-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WA Daily Breakdown -->
+        <div class="section-card fade-up" style="margin-top:16px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-chart-line" style="color:#16a34a"></i> Daily WhatsApp Breakdown</div>
+          </div>
+          <div id="wa-daily-body" style="padding:0;">
+            <div class="loading-wrap"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+      </div><!-- /section-whatsapp -->
+
+      <!-- TAB: AI REPORT -->
+      <div class="report-section" id="section-ai">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-robot" style="color:var(--gold)"></i> AI Performance Report</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary btn-sm" id="btn-daily" onclick="generateAIReport('daily')">
+                <i class="fas fa-calendar-day"></i> Daily Report
+              </button>
+              <button class="btn btn-ghost btn-sm" id="btn-monthly" onclick="generateAIReport('monthly')">
+                <i class="fas fa-calendar-alt"></i> Monthly Report
+              </button>
+              <button class="btn btn-ghost btn-sm" id="btn-copy-ai" onclick="copyAIReport()" style="display:none;">
+                <i class="fas fa-copy"></i> Copy
+              </button>
+            </div>
+          </div>
+          <div class="section-body">
+            <div id="ai-output" style="min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;">
+              <div style="text-align:center;">
+                <div style="font-size:40px;margin-bottom:12px;">🤖</div>
+                <div style="font-weight:700;margin-bottom:6px;">AI Report Generator</div>
+                <div style="font-size:12px;">Click Daily or Monthly to generate an AI-powered report</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+
+const now = new Date();
+document.getElementById('month-filter').value = String(now.getMonth()+1).padStart(2,'0');
+
+const CHART_COLORS = ['#D4AF37','#10B981','#3B82F6','#8B5CF6','#EF4444','#F59E0B','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16','#0EA5E9'];
+const MONTH_NAMES  = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+
+let reasonChart, agentChart, trendChart, requestsChart;
+var TH  = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:left;white-space:nowrap;';
+var THC = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:center;white-space:nowrap;';
+var THR = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:right;white-space:nowrap;';
+var TD  = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;';
+var TDC = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:center;';
+var TDR = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:right;font-weight:700;';
+var TDPC= 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:right;color:#666;';
+var TDF = 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;';
+var TDFC= 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;text-align:center;color:#1E5E9E;';
+var TDFR= 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;text-align:right;';
+let _callsData = [], _projReasons = [], _sortedReasons = [], _sortedAgents = [];
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.report-section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('section-'+name).classList.add('active');
+  if (name === 'whatsapp') loadWhatsAppReport();
+}
+
+async function loadAll() {
+  const btn = document.querySelector('.btn-ghost .fa-sync-alt')?.parentElement;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i>'; }
+  const month     = document.getElementById('month-filter').value;
+  const year      = parseInt(document.getElementById('year-filter').value);
+  const monthName = MONTH_NAMES[parseInt(month)];
+  const dateFrom  = year+'-'+month+'-01T00:00:00';
+  const lastDay   = new Date(year, parseInt(month), 0).getDate();
+  const dateTo    = year+'-'+month+'-'+String(lastDay).padStart(2,'0')+'T23:59:59';
+  document.getElementById('kpi-month-label').innerText = monthName+' '+year;
+  await Promise.allSettled([
+    loadCallStats(dateFrom, dateTo, monthName, year),
+    loadKPITable(monthName, year),
+    loadRequestsData(),
+  ]);
+  // load WA if tab is active
+  const waSection = document.getElementById('section-whatsapp');
+  if (waSection && waSection.classList.contains('active')) loadWhatsAppReport();
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"></i>'; }
+  showToast('All reports refreshed', 'success');
+}
+
+// ── WhatsApp Report ──
+async function loadWhatsAppReport() {
+  const month   = document.getElementById('month-filter').value;
+  const year    = parseInt(document.getElementById('year-filter').value);
+  const lastDay = new Date(year, parseInt(month), 0).getDate();
+  const dateFrom = `${year}-${month}-01T00:00:00`;
+  const dateTo   = `${year}-${month}-${String(lastDay).padStart(2,'0')}T23:59:59`;
+
+  // Set loading state
+  ['wa-reason-body','wa-agent-body','wa-daily-body'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  });
+
+  try {
+    const [waRes, projReasonsRes] = await Promise.all([
+      db.from('whatsapp_logs')
+        .select('call_reason,agent_name,logged_at,business_relativity,sales_call_requested')
+        .gte('logged_at', dateFrom)
+        .lte('logged_at', dateTo),
+      db.from('call_reasons').select('name,category').eq('is_active',true),
+    ]);
+
+    const wa = waRes.data || [];
+    const projReasons = (projReasonsRes.data||[]).filter(r=>r.category==='Projects Leads').map(r=>r.name);
+    const total = wa.length;
+
+    // ── Today count ──
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { count: todayWa } = await db.from('whatsapp_logs')
+      .select('*',{count:'exact',head:true})
+      .gte('logged_at', todayStr+'T00:00:00')
+      .lte('logged_at', todayStr+'T23:59:59');
+
+    // KPI Cards
+    const leads   = wa.filter(r=>projReasons.includes(r.call_reason)).length;
+    const sales   = wa.filter(r=>r.sales_call_requested==='Yes').length;
+    const biz     = wa.filter(r=>r.business_relativity==='Business Related').length;
+    const bizPct  = total ? (biz/total*100).toFixed(1)+'%' : '0%';
+
+    document.getElementById('wa-total').innerText  = total;
+    document.getElementById('wa-today').innerText  = todayWa || 0;
+    document.getElementById('wa-leads').innerText  = leads;
+    document.getElementById('wa-sales').innerText  = sales;
+    document.getElementById('wa-bizpct').innerText = bizPct;
+
+    // ── By Reason ──
+    const reasonMap = {};
+    wa.forEach(r => { reasonMap[r.call_reason||'Unknown'] = (reasonMap[r.call_reason||'Unknown']||0) + 1; });
+    const reasonRows = Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]);
+    document.getElementById('wa-reason-total').innerText = total + ' total';
+    document.getElementById('wa-reason-body').innerHTML = reasonRows.length ? `
+      <table class="stat-table">
+        <thead><tr><th>Reason</th><th class="num">Count</th><th class="pct">%</th></tr></thead>
+        <tbody>
+          ${reasonRows.map(([r,n])=>`
+            <tr>
+              <td style="font-weight:600;">${r}</td>
+              <td class="num" style="color:#16a34a;font-weight:800;">${n}</td>
+              <td class="pct">${total?(n/total*100).toFixed(1)+'%':'0%'}</td>
+            </tr>`).join('')}
+          <tr class="total-row"><td>Total</td><td class="num">${total}</td><td class="pct">100%</td></tr>
+        </tbody>
+      </table>` : '<div class="empty-state">No WhatsApp data for this period</div>';
+
+    // ── By Agent ──
+    const agentMap = {};
+    wa.forEach(r => { agentMap[r.agent_name||'Unknown'] = (agentMap[r.agent_name||'Unknown']||0) + 1; });
+    const agentRows = Object.entries(agentMap).sort((a,b)=>b[1]-a[1]);
+    document.getElementById('wa-agent-body').innerHTML = agentRows.length ? `
+      <table class="stat-table">
+        <thead><tr><th>Agent</th><th class="num">WA Count</th><th class="pct">%</th></tr></thead>
+        <tbody>
+          ${agentRows.map(([a,n],i)=>`
+            <tr>
+              <td style="display:flex;align-items:center;gap:8px;">
+                <span style="width:20px;height:20px;background:var(--gold);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#000;">${i+1}</span>
+                ${a}
+              </td>
+              <td class="num" style="color:#16a34a;font-weight:800;">${n}</td>
+              <td class="pct">${total?(n/total*100).toFixed(1)+'%':'0%'}</td>
+            </tr>`).join('')}
+          <tr class="total-row"><td>Total</td><td class="num">${total}</td><td class="pct">100%</td></tr>
+        </tbody>
+      </table>` : '<div class="empty-state">No WhatsApp data for this period</div>';
+
+    // ── Daily Breakdown ──
+    const dailyMap = {};
+    wa.forEach(r => {
+      if (!r.logged_at) return;
+      const day = r.logged_at.split('T')[0];
+      dailyMap[day] = (dailyMap[day]||0) + 1;
+    });
+    const dailyRows = Object.entries(dailyMap).sort((a,b)=>a[0].localeCompare(b[0]));
+    document.getElementById('wa-daily-body').innerHTML = dailyRows.length ? `
+      <table class="stat-table">
+        <thead><tr><th>Date</th><th class="num">Count</th><th style="min-width:200px;">Bar</th></tr></thead>
+        <tbody>
+          ${dailyRows.map(([d,n])=>{
+            const maxVal = Math.max(...dailyRows.map(x=>x[1]));
+            const pct = maxVal ? (n/maxVal*100).toFixed(0) : 0;
+            const dateLabel = new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',weekday:'short'});
+            return `<tr>
+              <td style="font-size:12px;color:var(--muted);">${dateLabel}</td>
+              <td class="num" style="color:#16a34a;font-weight:800;">${n}</td>
+              <td style="padding:10px 14px;">
+                <div style="background:var(--surface2);border-radius:4px;overflow:hidden;height:8px;">
+                  <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:4px;"></div>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+          <tr class="total-row"><td>Total</td><td class="num">${total}</td><td></td></tr>
+        </tbody>
+      </table>` : '<div class="empty-state">No WhatsApp data for this period</div>';
+
+  } catch(e) {
+    ['wa-reason-body','wa-agent-body','wa-daily-body'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<div class="empty-state">❌ Failed to load: ${e.message}</div>`;
+    });
+  }
+}
+
+async function loadCallStats(dateFrom, dateTo, monthName, year) {
+  const [callsRes, reasonsRes] = await Promise.all([
+    db.from('call_logs').select('call_reason,agent_name,logged_at,business_relativity').gte('logged_at',dateFrom).lte('logged_at',dateTo),
+    db.from('call_reasons').select('name,category').eq('is_active',true),
+  ]);
+  _callsData  = callsRes.data  || [];
+  const reasons = reasonsRes.data || [];
+  _projReasons  = reasons.filter(r=>r.category==='Projects Leads').map(r=>r.name);
+
+  const total = _callsData.length;
+  document.getElementById('r-calls').innerText = total;
+  document.getElementById('calls-total-label').innerText = total+' total';
+
+  const leads = _callsData.filter(c=>_projReasons.includes(c.call_reason)).length;
+  document.getElementById('r-leads').innerText   = leads;
+  document.getElementById('proj-count').innerText = leads;
+  document.getElementById('proj-pct').innerText   = total?(leads/total*100).toFixed(1)+'%':'0%';
+
+  const bizCalls    = _callsData.filter(c=>c.business_relativity==='Business Related').length;
+  const nonBizCalls = _callsData.filter(c=>c.business_relativity==='Non-Business Related').length;
+  document.getElementById('r-bizpct').innerText     = total?(bizCalls/total*100).toFixed(0)+'%':'—';
+  document.getElementById('biz-count').innerText    = bizCalls;
+  document.getElementById('biz-pct').innerText      = total?(bizCalls/total*100).toFixed(1)+'%':'0%';
+  document.getElementById('nonbiz-count').innerText = nonBizCalls;
+  document.getElementById('nonbiz-pct').innerText   = total?(nonBizCalls/total*100).toFixed(1)+'%':'0%';
+
+  // By reason
+  const reasonCounts = {};
+  _callsData.forEach(c => { const k=c.call_reason||'Unknown'; reasonCounts[k]=(reasonCounts[k]||0)+1; });
+  _sortedReasons = Object.entries(reasonCounts).sort((a,b)=>b[1]-a[1]);
+  drawDoughnut('reason-chart', _sortedReasons.slice(0,10).map(e=>e[0]), _sortedReasons.slice(0,10).map(e=>e[1]), reasonChart, c=>reasonChart=c);
+  const rtbody = document.getElementById('reason-table');
+  rtbody.innerHTML = _sortedReasons.map(([r,c],i)=>
+    '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+CHART_COLORS[i%CHART_COLORS.length]+';margin-right:8px;"></span>'+r+'</td><td class="num">'+c+'</td><td class="pct">'+(total?(c/total*100).toFixed(1)+'%':'0%')+'</td></tr>'
+  ).join('') + '<tr class="total-row"><td><strong>Total</strong></td><td class="num">'+total+'</td><td class="pct">100%</td></tr>';
+
+  // By agent
+  const agentCounts = {};
+  _callsData.forEach(c => { const k=c.agent_name||'Unknown'; agentCounts[k]=(agentCounts[k]||0)+1; });
+  _sortedAgents = Object.entries(agentCounts).sort((a,b)=>b[1]-a[1]);
+  drawBar('agent-chart', _sortedAgents.map(e=>e[0]), _sortedAgents.map(e=>e[1]), agentChart, c=>agentChart=c);
+  const atbody = document.getElementById('agent-table');
+  atbody.innerHTML = _sortedAgents.map(([a,c],i)=>
+    '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+CHART_COLORS[i%CHART_COLORS.length]+';margin-right:8px;"></span>'+a+'</td><td class="num">'+c+'</td><td class="pct">'+(total?(c/total*100).toFixed(1)+'%':'0%')+'</td></tr>'
+  ).join('') + '<tr class="total-row"><td><strong>Total</strong></td><td class="num">'+total+'</td><td class="pct">100%</td></tr>';
+
+  // Matrix
+  buildMatrix();
+
+  // Daily
+  const dailyCounts = {};
+  _callsData.forEach(c => { const day=c.logged_at?.split('T')[0]; if(day) dailyCounts[day]=(dailyCounts[day]||0)+1; });
+  const sortedDays = Object.entries(dailyCounts).sort((a,b)=>a[0].localeCompare(b[0]));
+  drawLine('trend-chart', sortedDays.map(e=>e[0].slice(5)), sortedDays.map(e=>e[1]), trendChart, c=>trendChart=c);
+  buildDailyTable(sortedDays.map(e=>e[0]));
+}
+
+function buildMatrix() {
+  const topReasons = _sortedReasons.slice(0,8).map(e=>e[0]);
+
+  var TH  = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:left;white-space:nowrap;';
+  var THC = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:center;white-space:nowrap;';
+  var THR = 'padding:10px 14px;background:#1E5E9E;color:white;font-weight:700;font-size:12px;text-align:right;white-space:nowrap;';
+  var TD  = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;';
+  var TDC = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:center;';
+  var TDR = 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:right;font-weight:700;';
+  var TDPC= 'padding:9px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;text-align:right;color:#666;';
+  var TDF = 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;';
+  var TDFC= 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;text-align:center;color:#1E5E9E;';
+  var TDFR= 'padding:10px 14px;background:#EBF0F8;font-weight:800;font-size:12px;text-align:right;';
+  const agentNames = _sortedAgents.map(e=>e[0]);
+  const total = _callsData.length;
+  document.getElementById('matrix-head').innerHTML =
+    '<th>Agent</th>' + topReasons.map(r=>'<th style="text-align:right;font-size:10px;">'+r+'</th>').join('') + '<th style="text-align:right;">Total</th>';
+  document.getElementById('matrix-body').innerHTML = agentNames.map(agent => {
+    const cells = topReasons.map(r => {
+      const cnt = _callsData.filter(c=>c.agent_name===agent&&c.call_reason===r).length;
+      return '<td style="text-align:right;font-weight:'+(cnt>0?'700':'400')+';color:'+(cnt>0?'var(--text)':'var(--muted)')+';">'+(cnt||'—')+'</td>';
+    }).join('');
+    const t = _callsData.filter(c=>c.agent_name===agent).length;
+    return '<tr><td style="font-weight:700;">'+agent+'</td>'+cells+'<td style="text-align:right;font-weight:800;color:var(--gold);">'+t+'</td></tr>';
+  }).join('');
+}
+
+function buildDailyTable(dates) {
+  const topReasons = _sortedReasons.slice(0,8).map(e=>e[0]);
+  const total = _callsData.length;
+  document.getElementById('daily-head').innerHTML =
+    '<th>Date</th>' + topReasons.map(r=>'<th style="text-align:right;font-size:10px;">'+r+'</th>').join('') + '<th style="text-align:right;">Total</th>';
+  const rows = dates.map(date => {
+    const dayCalls = _callsData.filter(c=>c.logged_at?.startsWith(date));
+    const d = new Date(date+'T00:00:00');
+    const fmt = d.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    const cells = topReasons.map(r => {
+      const cnt = dayCalls.filter(c=>c.call_reason===r).length;
+      return '<td style="text-align:right;font-weight:'+(cnt>0?'700':'400')+';color:'+(cnt>0?'var(--text)':'var(--muted)')+';">'+(cnt||'—')+'</td>';
+    }).join('');
+    return '<tr><td style="font-weight:700;white-space:nowrap;">'+fmt+'</td>'+cells+'<td style="text-align:right;font-weight:800;color:var(--gold);">'+dayCalls.length+'</td></tr>';
+  }).join('');
+  const totals = topReasons.map(r => '<td style="text-align:right;font-weight:800;">'+_callsData.filter(c=>c.call_reason===r).length+'</td>').join('');
+  document.getElementById('daily-body').innerHTML = rows + '<tr class="total-row"><td><strong>Total</strong></td>'+totals+'<td style="text-align:right;font-weight:800;color:var(--gold);">'+total+'</td></tr>';
+}
+
+async function loadKPITable(monthName, year) {
+  const tbody = document.getElementById('kpi-table-body');
+  const month = document.getElementById('month-filter').value;
+  const dateFrom = year+'-'+month+'-01';
+  const lastDay  = new Date(year, parseInt(month), 0).getDate();
+  const dateTo   = year+'-'+month+'-'+String(lastDay).padStart(2,'0');
+  tbody.innerHTML = '<tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const [agentsRes, perfRes, excusesRes, annualRes, qualityRes] = await Promise.all([
+      db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+      db.from('daily_performance').select('agent_id,conformance,missing_sec,active_sec,target_sec,avg_aht,calls').gte('perf_date',dateFrom).lte('perf_date',dateTo),
+      db.from('excuses').select('agent_id').eq('status','Approved').gte('excuse_date',dateFrom).lte('excuse_date',dateTo),
+      db.from('annual_leave').select('*').eq('year',year),
+      db.from('quality_scores').select('*').eq('month',monthName).eq('year',year),
+    ]);
+    const agents=agentsRes.data||[], perf=perfRes.data||[], exc=excusesRes.data||[], ann=annualRes.data||[], qual=qualityRes.data||[];
+    const confs = perf.map(p=>parseFloat(p.conformance||0)).filter(v=>v>0);
+    document.getElementById('r-conf').innerText = confs.length?(confs.reduce((a,b)=>a+b,0)/confs.length).toFixed(0)+'%':'—';
+    const ahtArr = perf.filter(p=>p.avg_aht>0);
+    document.getElementById('r-aht').innerText = ahtArr.length?secToTime(Math.round(ahtArr.reduce((s,p)=>s+p.avg_aht,0)/ahtArr.length)):'—';
+    tbody.innerHTML = agents.map(agent => {
+      const ap = perf.filter(p=>p.agent_id===agent.id);
+      let conf='—',miss='—',net='—',aht='—',calls=0;
+      if (ap.length) {
+        conf = (ap.reduce((s,p)=>s+parseFloat(p.conformance||0),0)/ap.length).toFixed(1)+'%';
+        const ms = ap.reduce((s,p)=>s+(p.missing_sec||0),0);
+        const es = ap.reduce((s,p)=>s+Math.max(0,(p.active_sec||0)-(p.target_sec||0)),0);
+        const ns = Math.max(0,ms-es);
+        miss = ms<=300?'Full Time':secToTime(ms);
+        net  = ns<=300?'Full Time':secToTime(ns);
+        const a2 = ap.filter(p=>p.avg_aht>0);
+        if (a2.length) aht = secToTime(Math.round(a2.reduce((s,p)=>s+p.avg_aht,0)/a2.length));
+        calls = ap.reduce((s,p)=>s+(p.calls||0),0);
+      }
+      const excH = exc.filter(e=>e.agent_id===agent.id).length*2;
+      const a    = ann.find(x=>x.agent_id===agent.id)||{};
+      const left = a.remaining!==undefined?a.remaining:'—';
+      const q    = qual.find(x=>x.agent_id===agent.id);
+      const cn   = parseFloat(conf)||0;
+      const cc   = cn>=98?'#10B981':cn>=90?'#F59E0B':'#EF4444';
+      return '<tr><td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">'+initials(agent.formal_name)+'</div><span style="font-weight:700;">'+agent.formal_name+'</span></div></td>'
+        +'<td style="font-weight:800;color:'+cc+';">'+conf+'</td>'
+        +'<td style="color:'+(miss==='Full Time'?'#10B981':'#EF4444')+';font-weight:700;">'+miss+'</td>'
+        +'<td style="color:'+(net==='Full Time'?'#10B981':'#EF4444')+';font-weight:700;">'+net+'</td>'
+        +'<td style="font-family:monospace;">'+aht+'</td>'
+        +'<td style="font-weight:700;">'+calls+'</td>'
+        +'<td style="color:#F59E0B;">'+(excH>0?excH+' hrs':'None')+'</td>'
+        +'<td style="color:'+(q?'var(--gold)':'var(--muted)')+';">'+(q?.score||'—')+'</td>'
+        +'<td>'+(left!=='—'?'<span class="badge '+(left<=3?'badge-danger':'badge-success')+'">'+left+' days</span>':'—')+'</td></tr>';
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><span class="empty-icon">❌</span>Failed: '+e.message+'</div></td></tr>';
+  }
+}
+
+
+
+async function loadRequestsData() {
+  const {data:reqs} = await db.from('requests').select('type,status');
+  const all = reqs||[];
+  const pending  = all.filter(r=>r.status==='Pending').length;
+  const approved = all.filter(r=>r.status==='Approved').length;
+  const rejected = all.filter(r=>r.status==='Rejected').length;
+  document.getElementById('r-pending').innerText = pending;
+  drawDoughnut('requests-chart',['Pending','Approved','Rejected'],[pending,approved,rejected],requestsChart,c=>requestsChart=c,['#F59E0B','#10B981','#EF4444']);
+  const types = [...new Set(all.map(r=>r.type))];
+  document.getElementById('requests-table').innerHTML = types.map(type => {
+    const p=all.filter(r=>r.type===type&&r.status==='Pending').length;
+    const a=all.filter(r=>r.type===type&&r.status==='Approved').length;
+    const rj=all.filter(r=>r.type===type&&r.status==='Rejected').length;
+    return '<tr><td style="font-weight:600;">'+type+'</td><td style="text-align:right;color:#F59E0B;font-weight:700;">'+(p||'—')+'</td><td style="text-align:right;color:#10B981;font-weight:700;">'+(a||'—')+'</td><td style="text-align:right;color:#EF4444;font-weight:700;">'+(rj||'—')+'</td></tr>';
+  }).join('') + '<tr class="total-row"><td><strong>Total</strong></td><td style="text-align:right;color:#F59E0B;font-weight:800;">'+pending+'</td><td style="text-align:right;color:#10B981;font-weight:800;">'+approved+'</td><td style="text-align:right;color:#EF4444;font-weight:800;">'+rejected+'</td></tr>';
+}
+
+async function copyReport() {
+  if (!_callsData.length) { showToast('Load data first','warning'); return; }
+  const month     = document.getElementById('month-filter').value;
+  const year      = document.getElementById('year-filter').value;
+  const monthName = MONTH_NAMES[parseInt(month)];
+  const total     = _callsData.length;
+  const bizCalls    = _callsData.filter(c=>c.business_relativity==='Business Related').length;
+  const nonBizCalls = _callsData.filter(c=>c.business_relativity==='Non-Business Related').length;
+  const leads       = _callsData.filter(c=>_projReasons.includes(c.call_reason)).length;
+  const bizPct    = total?(bizCalls/total*100).toFixed(1)+'%':'0%';
+  const nonBizPct = total?(nonBizCalls/total*100).toFixed(1)+'%':'0%';
+
+  // Top reasons for daily table (max 8)
+  var topReasons = _sortedReasons.slice(0,8).map(function(e){return e[0];});
+
+  // ── Outlook-safe table styles ──
+  var S = {
+    hdrDate:  'background:#1E5E9E;color:#fff;font-family:Arial;font-size:10px;font-weight:700;padding:7px 10px;border:1px solid #1a5491;text-align:left;white-space:nowrap;width:75px;',
+    hdrReason:'background:#1E5E9E;color:#fff;font-family:Arial;font-size:10px;font-weight:700;padding:7px 6px;border:1px solid #1a5491;text-align:center;',
+    hdrTotal: 'background:#14477a;color:#fff;font-family:Arial;font-size:10px;font-weight:700;padding:7px 8px;border:1px solid #1a5491;text-align:center;white-space:nowrap;width:45px;',
+    celDate:  'font-family:Arial;font-size:10px;padding:6px 10px;border:1px solid #ddd;white-space:nowrap;font-weight:700;',
+    celNum:   'font-family:Arial;font-size:11px;padding:6px 4px;border:1px solid #ddd;text-align:center;font-weight:700;color:#1a1a1a;',
+    celDash:  'font-family:Arial;font-size:11px;padding:6px 4px;border:1px solid #ddd;text-align:center;color:#ccc;',
+    celTotal: 'font-family:Arial;font-size:11px;padding:6px 8px;border:1px solid #1E5E9E;text-align:center;font-weight:800;color:#1E5E9E;background:#eef3fb;',
+    footDate: 'background:#1E5E9E;color:#fff;font-family:Arial;font-size:10px;font-weight:700;padding:7px 10px;border:1px solid #1a5491;',
+    footNum:  'background:#eef3fb;font-family:Arial;font-size:11px;font-weight:800;padding:7px 4px;border:1px solid #1E5E9E;text-align:center;color:#1E5E9E;',
+    footTotal:'background:#1E5E9E;color:#fff;font-family:Arial;font-size:11px;font-weight:800;padding:7px 8px;border:1px solid #1a5491;text-align:center;',
+    mtdHdr:   'background:#1E5E9E;color:#fff;font-family:Arial;font-size:11px;font-weight:700;padding:8px 12px;border:1px solid #1a5491;',
+    mtdHdrR:  'background:#1E5E9E;color:#fff;font-family:Arial;font-size:11px;font-weight:700;padding:8px 12px;border:1px solid #1a5491;text-align:right;',
+    mtdCel:   'font-family:Arial;font-size:11px;padding:7px 12px;border:1px solid #ddd;',
+    mtdCelR:  'font-family:Arial;font-size:11px;padding:7px 12px;border:1px solid #ddd;text-align:right;font-weight:700;',
+    mtdFoot:  'background:#eef3fb;font-family:Arial;font-size:11px;font-weight:800;padding:8px 12px;border:1px solid #1E5E9E;',
+    mtdFootR: 'background:#eef3fb;font-family:Arial;font-size:11px;font-weight:800;padding:8px 12px;border:1px solid #1E5E9E;text-align:right;',
+  };
+
+  // ── MTD by Reason rows ──
+  var reasonRows = _sortedReasons.map(function(e,i){
+    var bg = i%2===0?'#ffffff':'#f4f7fb';
+    return '<tr bgcolor="'+bg+'"><td style="'+S.mtdCel+'">'+e[0]+'</td>'
+      +'<td style="'+S.mtdCelR+'">'+e[1]+'</td>'
+      +'<td style="'+S.mtdCelR+'color:#666;">'+(total?(e[1]/total*100).toFixed(1)+'%':'0%')+'</td></tr>';
+  }).join('');
+
+  // ── Daily Detail rows ──
+  var dailyMap = {};
+  _callsData.forEach(function(c){
+    var day = c.logged_at && c.logged_at.split('T')[0];
+    if (!day) return;
+    if (!dailyMap[day]) dailyMap[day] = [];
+    dailyMap[day].push(c);
+  });
+  var sortedDays = Object.keys(dailyMap).sort();
+
+  var dailyHead = '<th style="'+S.hdrDate+'">Date</th>'
+    + topReasons.map(function(r){ return '<th style="'+S.hdrReason+'">'+r+'</th>'; }).join('')
+    + '<th style="'+S.hdrTotal+'">Total</th>';
+
+  var dailyRows = sortedDays.map(function(day,i){
+    var bg = i%2===0?'#ffffff':'#f4f7fb';
+    var dayCalls = dailyMap[day]||[];
+    var d   = new Date(day+'T00:00:00');
+    var fmt = d.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    var cells = topReasons.map(function(r){
+      var cnt = dayCalls.filter(function(c){return c.call_reason===r;}).length;
+      return cnt>0
+        ? '<td style="'+S.celNum+'">'+cnt+'</td>'
+        : '<td style="'+S.celDash+'">—</td>';
+    }).join('');
+    return '<tr bgcolor="'+bg+'"><td style="'+S.celDate+'">'+fmt+'</td>'+cells+'<td style="'+S.celTotal+'">'+dayCalls.length+'</td></tr>';
+  }).join('');
+
+  var dailyFootCells = topReasons.map(function(r){
+    return '<td style="'+S.footNum+'">'+_callsData.filter(function(c){return c.call_reason===r;}).length+'</td>';
+  }).join('');
+
+  var generatedDate = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+
+  var html = '<div style="font-family:Arial,sans-serif;font-size:12px;">'
+
+    // Title
+    + '<h2 style="color:#1E5E9E;font-family:Arial;font-size:18px;margin:0 0 2px;">Call Report &#8212; '+monthName+' '+year+'</h2>'
+    + '<p style="color:#888;font-family:Arial;font-size:11px;margin:0 0 18px;">Nations of Sky &#8212; Generated: '+generatedDate+'</p>'
+
+    // Summary Cards
+    + '<table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;border-collapse:separate;border-spacing:8px;">'
+    + '<tr>'
+    + '<td width="130" bgcolor="#1E5E9E" style="background:#1E5E9E;padding:14px 16px;text-align:center;">'
+    +   '<div style="color:#fff;font-family:Arial;font-size:26px;font-weight:900;line-height:1;">'+total+'</div>'
+    +   '<div style="color:#cce4ff;font-family:Arial;font-size:9px;margin-top:5px;letter-spacing:1px;">TOTAL CALLS</div>'
+    + '</td>'
+    + '<td width="12"></td>'
+    + '<td width="130" bgcolor="#10b981" style="background:#10b981;padding:14px 16px;text-align:center;">'
+    +   '<div style="color:#fff;font-family:Arial;font-size:26px;font-weight:900;line-height:1;">'+bizPct+'</div>'
+    +   '<div style="color:#d1fae5;font-family:Arial;font-size:9px;margin-top:5px;letter-spacing:1px;">BUSINESS</div>'
+    + '</td>'
+    + '<td width="12"></td>'
+    + '<td width="130" bgcolor="#ef4444" style="background:#ef4444;padding:14px 16px;text-align:center;">'
+    +   '<div style="color:#fff;font-family:Arial;font-size:26px;font-weight:900;line-height:1;">'+nonBizPct+'</div>'
+    +   '<div style="color:#fecaca;font-family:Arial;font-size:9px;margin-top:5px;letter-spacing:1px;">NON-BUSINESS</div>'
+    + '</td>'
+    + '<td width="12"></td>'
+    + '<td width="130" bgcolor="#D4AF37" style="background:#D4AF37;padding:14px 16px;text-align:center;">'
+    +   '<div style="color:#fff;font-family:Arial;font-size:26px;font-weight:900;line-height:1;">'+leads+'</div>'
+    +   '<div style="color:#fef9e7;font-family:Arial;font-size:9px;margin-top:5px;letter-spacing:1px;">PROJECT LEADS</div>'
+    + '</td>'
+    + '</tr></table>'
+
+    // MTD by Reason
+    + '<p style="color:#1E5E9E;font-family:Arial;font-size:12px;font-weight:700;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #1E5E9E;">MTD &#8212; Calls by Reason</p>'
+    + '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:24px;">'
+    + '<thead><tr>'
+    +   '<th style="'+S.mtdHdr+'width:240px;">Call Reason</th>'
+    +   '<th style="'+S.mtdHdrR+'width:80px;">No. Calls</th>'
+    +   '<th style="'+S.mtdHdrR+'width:60px;">%</th>'
+    + '</tr></thead>'
+    + '<tbody>'+reasonRows+'</tbody>'
+    + '<tfoot><tr>'
+    +   '<td style="'+S.mtdFoot+'">Grand Total</td>'
+    +   '<td style="'+S.mtdFootR+'">'+total+'</td>'
+    +   '<td style="'+S.mtdFootR+'">100%</td>'
+    + '</tr></tfoot>'
+    + '</table>'
+
+    // Daily Detail
+    + '<p style="color:#1E5E9E;font-family:Arial;font-size:12px;font-weight:700;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #1E5E9E;">Daily Detail &#8212; '+monthName+' '+year+'</p>'
+    + '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:24px;">'
+    + '<thead><tr>'+dailyHead+'</tr></thead>'
+    + '<tbody>'+dailyRows+'</tbody>'
+    + '<tfoot><tr>'
+    +   '<td style="'+S.footDate+'">Total</td>'
+    +   dailyFootCells
+    +   '<td style="'+S.footTotal+'">'+total+'</td>'
+    + '</tr></tfoot>'
+    + '</table>'
+
+    + '<p style="color:#aaa;font-family:Arial;font-size:9px;margin-top:12px;border-top:1px solid #eee;padding-top:8px;">Nations of Sky Admin Portal</p>'
+    + '</div>';
+
+  try {
+    var blob = new Blob([html],{type:'text/html'});
+    var clipData = new ClipboardItem({'text/html':blob});
+    await navigator.clipboard.write([clipData]);
+
+    var mgrsRes = await db.from('agents').select('email').in('role',['Manager','Admin']).eq('status','Active');
+    var toEmails = ((mgrsRes.data)||[]).filter(function(m){return m.email;}).map(function(m){return m.email.trim();}).join(';');
+    var subject  = 'Call Report \u2014 '+monthName+' '+year;
+    window.open('mailto:'+(toEmails||'')+'?subject='+encodeURIComponent(subject));
+
+    showToast('\ud83d\udccb','Report copied!','Paste in Outlook body','success',4000);
+  } catch(e) {
+    showToast('\u274c','Copy failed',e.message,'error',4000);
+  }
+}
+
+function drawDoughnut(id,labels,data,instance,setter,colors){if(instance)instance.destroy();const ctx=document.getElementById(id);if(!ctx)return;setter(new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors||CHART_COLORS,borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{color:'#6B7A99',font:{size:10},padding:10,boxWidth:10}}}}}));}
+function drawBar(id,labels,data,instance,setter){if(instance)instance.destroy();const ctx=document.getElementById(id);if(!ctx)return;setter(new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:CHART_COLORS,borderRadius:6,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6B7A99',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#6B7A99',font:{size:10}},grid:{color:'rgba(212,175,55,0.08)'},beginAtZero:true}}}}));}
+function drawLine(id,labels,data,instance,setter){if(instance)instance.destroy();const ctx=document.getElementById(id);if(!ctx)return;setter(new Chart(ctx,{type:'line',data:{labels,datasets:[{data,borderColor:'#D4AF37',backgroundColor:'rgba(212,175,55,0.08)',fill:true,tension:0.4,pointBackgroundColor:'#D4AF37',pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6B7A99',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#6B7A99',font:{size:10}},grid:{color:'rgba(212,175,55,0.08)'},beginAtZero:true}}}}));}
+function secToTime(s){if(!s&&s!==0)return '—';return Math.floor(s/3600).toString().padStart(2,'0')+':'+Math.floor((s%3600)/60).toString().padStart(2,'0')+':'+Math.floor(s%60).toString().padStart(2,'0');}
+
+
+const WORKER_URL = 'https://nos-ai-report.nations-sky-reports.workers.dev/';
+let _aiText = '';
+
+async function generateAIReport(type) {
+  const month     = document.getElementById('month-filter').value;
+  const year      = parseInt(document.getElementById('year-filter').value);
+  const monthName = MONTH_NAMES[parseInt(month)];
+  const today     = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  const btn       = document.getElementById(type === 'daily' ? 'btn-daily' : 'btn-monthly');
+  const output    = document.getElementById('ai-output');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+  document.getElementById('btn-copy-ai').style.display = 'none';
+  output.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="margin:0 auto 12px;"></div><div style="color:var(--muted);font-size:13px;">AI is analyzing your data...</div></div>';
+  try {
+    var prompt = '';
+    if (type === 'daily') {
+      var r1 = await db.from('call_logs').select('call_reason,agent_name,business_relativity').gte('logged_at',today+'T00:00:00').lte('logged_at',today+'T23:59:59');
+      var r2 = await db.from('schedule').select('agent_id,day_type,agents(formal_name)').eq('shift_date',today);
+      var r3 = await db.from('adherence_deviations').select('agent_name,deviation_type').eq('deviation_date',today);
+      var calls = r1.data||[], sched = r2.data||[], adh = r3.data||[];
+      var working = sched.filter(function(s){return s.day_type==='Work';}).map(function(s){return s.agents&&s.agents.formal_name;}).filter(Boolean);
+      var total = calls.length;
+      var biz = calls.filter(function(c){return c.business_relativity==='Business Related';}).length;
+      var rm = {}; calls.forEach(function(c){var k=c.call_reason||'?';rm[k]=(rm[k]||0)+1;});
+      var am = {}; calls.forEach(function(c){var k=c.agent_name||'?';am[k]=(am[k]||0)+1;});
+      var parts = [
+        'You are a call center analyst for Nations of Sky. Write a daily report in English.',
+        'Date: '+today,
+        'Working: '+working.join(', '),
+        'Total Calls: '+total,
+        'Business: '+biz+' ('+(total?(biz/total*100).toFixed(1):0)+'%)',
+        'By Reason: '+Object.entries(rm).sort(function(a,b){return b[1]-a[1];}).map(function(e){return e[0]+':'+e[1];}).join(', '),
+        'By Agent: '+Object.entries(am).sort(function(a,b){return b[1]-a[1];}).map(function(e){return e[0]+':'+e[1];}).join(', '),
+        'Issues: '+(adh.length?adh.map(function(a){return a.agent_name+'-'+a.deviation_type;}).join(', '):'None'),
+        'Sections: Summary, Calls, Agents, Compliance, Recommendations.'
+      ];
+      prompt = parts.join(' | ');
+    } else {
+      var df = year+'-'+month+'-01';
+      var ld = new Date(year,parseInt(month),0).getDate();
+      var dt = year+'-'+month+'-'+String(ld).padStart(2,'0');
+      var r1 = await db.from('call_logs').select('call_reason,agent_name,business_relativity').gte('logged_at',df+'T00:00:00').lte('logged_at',dt+'T23:59:59');
+      var r2 = await db.from('daily_performance').select('agent_id,conformance,calls,agents(formal_name)').gte('perf_date',df).lte('perf_date',dt);
+      var r3 = await db.from('adherence_deviations').select('agent_name,is_waived').gte('deviation_date',df).lte('deviation_date',dt);
+      var calls = r1.data||[], perf = r2.data||[], adh = r3.data||[];
+      var total = calls.length;
+      var biz = calls.filter(function(c){return c.business_relativity==='Business Related';}).length;
+      var rm = {}; calls.forEach(function(c){var k=c.call_reason||'?';rm[k]=(rm[k]||0)+1;});
+      var pm = {}; perf.forEach(function(p){var n=p.agents&&p.agents.formal_name||p.agent_id;if(!pm[n])pm[n]={c:[],calls:0};pm[n].c.push(parseFloat(p.conformance||0));pm[n].calls+=p.calls||0;});
+      var parts = [
+        'You are a call center analyst for Nations of Sky. Write a monthly report in English.',
+        'Month: '+monthName+' '+year,
+        'Total Calls: '+total,
+        'Business: '+biz+' ('+(total?(biz/total*100).toFixed(1):0)+'%)',
+        'Top Reasons: '+Object.entries(rm).sort(function(a,b){return b[1]-a[1];}).slice(0,6).map(function(e){return e[0]+':'+e[1];}).join(', '),
+        'Agents: '+Object.entries(pm).map(function(e){var n=e[0];var d=e[1];return n+'(Conf:'+(d.c.length?(d.c.reduce(function(a,b){return a+b;},0)/d.c.length).toFixed(1):0)+'%,Calls:'+d.calls+')';}).join(', '),
+        'Deviations: '+adh.filter(function(a){return !a.is_waived;}).length+' active, '+adh.filter(function(a){return a.is_waived;}).length+' waived',
+        'Sections: Executive Summary, Call Analysis, Agent Performance, Adherence, Recommendations.'
+      ];
+      prompt = parts.join(' | ');
+    }
+    var res  = await fetch(WORKER_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt})});
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+    _aiText = data.text;
+    var lines = _aiText.split('\n');
+    var html  = '';
+    for (var i=0;i<lines.length;i++) {
+      var line = lines[i];
+      if      (line.startsWith('## '))  html += '<h3 style="color:var(--text);margin:16px 0 6px;font-size:14px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+line.slice(3)+'</h3>';
+      else if (line.startsWith('### ')) html += '<h4 style="color:var(--gold);margin:12px 0 4px;font-size:13px;">'+line.slice(4)+'</h4>';
+      else if (line.startsWith('- '))   html += '<li style="margin:3px 0;color:var(--text);">'+line.slice(2)+'</li>';
+      else if (line === '')             html += '<br>';
+      else html += '<p style="margin:4px 0;line-height:1.7;color:var(--text);">'+line+'</p>';
+    }
+    output.innerHTML = '<div style="font-size:13px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);"><span style="font-size:20px;">🤖</span><div><div style="font-weight:800;">'+(type==='daily'?'Daily':'Monthly')+' AI Report</div><div style="font-size:11px;color:var(--muted);">Generated by Gemini AI</div></div></div>'+html+'</div>';
+    document.getElementById('btn-copy-ai').style.display = 'flex';
+  } catch(e) {
+    output.innerHTML = '<div style="text-align:center;color:#ef4444;padding:40px;">❌ '+e.message+'</div>';
+    showToast('Failed: '+e.message,'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = type==='daily'?'<i class="fas fa-calendar-day"></i> Daily Report':'<i class="fas fa-calendar-alt"></i> Monthly Report';
+  }
+}
+
+function copyAIReport() {
+  if (!_aiText) return;
+  navigator.clipboard.writeText(_aiText).then(()=>showToast('Copied!','success'));
+}
+
+// ══════════════════════════════════════════
+// ── EXPORT EXCEL ──
+// ══════════════════════════════════════════
+async function exportExcel() {
+  const btn = document.getElementById('export-excel-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting…';
+
+  try {
+    const month     = document.getElementById('month-filter').value;
+    const year      = parseInt(document.getElementById('year-filter').value);
+    const monthName = MONTH_NAMES[parseInt(month)];
+    const dateFrom  = `${year}-${month}-01T00:00:00`;
+    const lastDay   = new Date(year, parseInt(month), 0).getDate();
+    const dateTo    = `${year}-${month}-${String(lastDay).padStart(2,'0')}T23:59:59`;
+    const dateFromD = `${year}-${month}-01`;
+    const dateToD   = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
+
+    showToast('Fetching data…', 'info');
+
+    // ── Fetch everything in parallel ──
+    const [callsRes, waRes, reasonsRes, agentsRes, perfRes, excRes, annRes, qualRes] = await Promise.all([
+      db.from('call_logs').select('call_reason,agent_name,logged_at,business_relativity,sales_call_requested').gte('logged_at', dateFrom).lte('logged_at', dateTo),
+      db.from('whatsapp_logs').select('call_reason,agent_name,logged_at,business_relativity,sales_call_requested').gte('logged_at', dateFrom).lte('logged_at', dateTo),
+      db.from('call_reasons').select('name,category').eq('is_active', true),
+      db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+      db.from('daily_performance').select('agent_id,conformance,missing_sec,active_sec,target_sec,avg_aht,calls,perf_date').gte('perf_date', dateFromD).lte('perf_date', dateToD),
+      db.from('excuses').select('agent_id').eq('status','Approved').gte('excuse_date', dateFromD).lte('excuse_date', dateToD),
+      db.from('annual_leave').select('*').eq('year', year),
+      db.from('quality_scores').select('*').eq('month', monthName).eq('year', year),
+    ]);
+
+    const calls   = callsRes.data  || [];
+    const wa      = waRes.data     || [];
+    const reasons = reasonsRes.data|| [];
+    const agents  = agentsRes.data || [];
+    const perf    = perfRes.data   || [];
+    const exc     = excRes.data    || [];
+    const ann     = annRes.data    || [];
+    const qual    = qualRes.data   || [];
+    const projReasons = reasons.filter(r=>r.category==='Projects Leads').map(r=>r.name);
+
+    const wb = XLSX.utils.book_new();
+
+    // ── Helper: count map ──
+    function countBy(arr, key) {
+      const m = {};
+      arr.forEach(r => { const k = r[key]||'Unknown'; m[k]=(m[k]||0)+1; });
+      return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+    }
+
+    // ════════════════════════════════════
+    // ════════════════════════════════════
+    // SHEET 0 — Summary (like the presentation)
+    // ════════════════════════════════════
+    const totalCalls  = calls.length;
+    const totalWA0    = wa.length;
+    const bizCalls0   = calls.filter(c=>c.business_relativity==='Business Related').length;
+    const nbizCalls0  = calls.filter(c=>c.business_relativity==='Non-Business Related').length;
+    const wrongNum0   = calls.filter(c=>c.call_reason==='Wrong Number').length;
+    const callDrop0   = calls.filter(c=>c.call_reason==='Call Dropped').length;
+    const leadCalls0  = calls.filter(c=>projReasons.includes(c.call_reason)).length;
+    const bizOnlyCalls0   = bizCalls0 - leadCalls0;
+    // Unclassified = calls that are none of the above (should be ~0 if agents classify properly)
+    const classified0     = new Set([
+      ...calls.filter(c=>c.business_relativity==='Business Related').map((_,i)=>i),
+      ...calls.filter(c=>c.business_relativity==='Non-Business Related').map((_,i)=>i),
+    ]);
+    const unclassified0   = calls.filter(c=>
+      c.call_reason !== 'Wrong Number' &&
+      c.call_reason !== 'Call Dropped' &&
+      c.business_relativity !== 'Business Related' &&
+      c.business_relativity !== 'Non-Business Related'
+    ).length;
+    const allAHT      = perf.filter(p=>p.avg_aht>0);
+    const avgAHTSec   = allAHT.length ? Math.round(allAHT.reduce((s,p)=>s+p.avg_aht,0)/allAHT.length) : 0;
+    const avgAHTFmt   = avgAHTSec ? secToTime(avgAHTSec) : '—';
+    const allConf     = perf.filter(p=>parseFloat(p.conformance||0)>0);
+    const avgConf     = allConf.length ? (allConf.reduce((s,p)=>s+parseFloat(p.conformance||0),0)/allConf.length).toFixed(1)+'%' : '—';
+
+    // Top agent by calls
+    const agentCallMap0 = {};
+    calls.forEach(c=>{ if(c.agent_name) agentCallMap0[c.agent_name]=(agentCallMap0[c.agent_name]||0)+1; });
+    const topCallAgent = Object.entries(agentCallMap0).sort((a,b)=>b[1]-a[1])[0];
+
+    // Fastest agent by AHT
+    const agentAHTMap0 = {};
+    perf.forEach(p=>{
+      if (!p.avg_aht || !p.agent_id) return;
+      const ag = agents.find(a=>a.id===p.agent_id);
+      if (!ag) return;
+      if (!agentAHTMap0[ag.formal_name]) agentAHTMap0[ag.formal_name] = [];
+      agentAHTMap0[ag.formal_name].push(p.avg_aht);
+    });
+    const agentAvgAHT = Object.entries(agentAHTMap0).map(([name,vals])=>({
+      name, avg: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)
+    })).sort((a,b)=>a.avg-b.avg);
+    const fastestAgent = agentAvgAHT[0];
+
+    // Top call reason
+    const reasonMap0 = {};
+    calls.forEach(c=>{ const k=c.call_reason||'Unknown'; reasonMap0[k]=(reasonMap0[k]||0)+1; });
+    const topReason0 = Object.entries(reasonMap0).sort((a,b)=>b[1]-a[1])[0];
+
+    const ws0Data = [
+      [`Contact Center Monthly Report — ${monthName} ${year}`],
+      [],
+      ['── CALL VOLUME ──'],
+      ['Total Calls',                   totalCalls],
+      ['Business Related (total)',      bizCalls0,     totalCalls ? +((bizCalls0/totalCalls*100).toFixed(1))+'%' : '0%'],
+      ['  └─ of which: Project Leads',  leadCalls0,    totalCalls ? +((leadCalls0/totalCalls*100).toFixed(1))+'%' : '0%'],
+      ['  └─ of which: Other Business', bizOnlyCalls0, totalCalls ? +((bizOnlyCalls0/totalCalls*100).toFixed(1))+'%' : '0%'],
+      ['Non-Business Related',          nbizCalls0,    totalCalls ? +((nbizCalls0/totalCalls*100).toFixed(1))+'%' : '0%'],
+      ['Wrong Number',                  wrongNum0,     totalCalls ? +((wrongNum0/totalCalls*100).toFixed(1))+'%' : '0%', '⚠ No classification needed'],
+      ['Call Dropped',                  callDrop0,     totalCalls ? +((callDrop0/totalCalls*100).toFixed(1))+'%' : '0%', '⚠ No classification needed'],
+      ['Unclassified (needs action)',   unclassified0, totalCalls ? +((unclassified0/totalCalls*100).toFixed(1))+'%' : '0%', unclassified0>0?'❌ Agents did not select Business/Non-Business':'✅ All classified'],
+      ['─ CHECK: sum should = Total',   bizCalls0+nbizCalls0+wrongNum0+callDrop0+unclassified0, bizCalls0+nbizCalls0+wrongNum0+callDrop0+unclassified0===totalCalls?'✅ Match':'❌ Mismatch'],
+      ['Top Call Reason',               topReason0?.[0]||'—', topReason0?.[1]||0, totalCalls&&topReason0 ? +((topReason0[1]/totalCalls*100).toFixed(1))+'%' : '0%'],
+      [],
+      ['── AGENT PERFORMANCE ──'],
+      ['Avg AHT',               avgAHTFmt],
+      ['Avg Conformance',       avgConf],
+      ['Highest Call Volume',   topCallAgent?.[0]||'—', topCallAgent?.[1]||0, 'calls'],
+      ['Fastest AHT',           fastestAgent?.name||'—', fastestAgent ? secToTime(fastestAgent.avg) : '—'],
+      [],
+      ['── WHATSAPP ──'],
+      ['Total WhatsApp',        totalWA0],
+      ['Business Related',      wa.filter(w=>w.business_relativity==='Business Related').length],
+      ['Project Leads',         wa.filter(w=>projReasons.includes(w.call_reason)).length],
+      [],
+      ['── ATTENDANCE ──'],
+      ['Active Agents',         agents.length],
+      ['Agents with Excused Hours', [...new Set(exc.map(e=>e.agent_id))].length],
+    ];
+    const ws0 = XLSX.utils.aoa_to_sheet(ws0Data);
+    ws0['!cols'] = [{wch:28},{wch:20},{wch:10},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws0, 'Summary');
+
+    // ════════════════════════════════════
+    // SHEET 0b — Agent Performance (Calls vs AHT)
+    // ════════════════════════════════════
+    const agentPerfRows = agents.map(agent => {
+      const ap = perf.filter(p=>p.agent_id===agent.id);
+      const totalAgentCalls = ap.reduce((s,p)=>s+(p.calls||0),0);
+      const callLogCount    = agentCallMap0[agent.formal_name]||0;
+      const ahtVals = ap.filter(p=>p.avg_aht>0);
+      const agentAHT = ahtVals.length ? Math.round(ahtVals.reduce((s,p)=>s+p.avg_aht,0)/ahtVals.length) : 0;
+      const agentAHTFmt = agentAHT ? secToTime(agentAHT) : '—';
+      const conf = ap.length ? (ap.reduce((s,p)=>s+parseFloat(p.conformance||0),0)/ap.length).toFixed(1)+'%' : '—';
+      return [agent.formal_name, callLogCount, agentAHT||'—', agentAHTFmt, conf];
+    }).filter(r=>r[1]>0).sort((a,b)=>b[1]-a[1]);
+
+    const wsAPData = [
+      [`Agent Performance: Call Volume vs AHT — ${monthName} ${year}`],
+      [],
+      ['Agent', 'Total Calls', 'AHT (seconds)', 'AHT (formatted)', 'Avg Conformance'],
+      ...agentPerfRows,
+      ['TOTAL / AVG', totalCalls, avgAHTSec||'—', avgAHTFmt, avgConf],
+    ];
+    const wsAP = XLSX.utils.aoa_to_sheet(wsAPData);
+    wsAP['!cols'] = [{wch:25},{wch:13},{wch:15},{wch:16},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsAP, 'Agent Performance');
+
+    // ════════════════════════════════════
+    // SHEET 0c — Business Breakdown
+    // ════════════════════════════════════
+    // Per-agent business breakdown
+    const allAgentNames = [...new Set(calls.map(c=>c.agent_name).filter(Boolean))].sort();
+    const wsBBData = [
+      [`Business Breakdown — ${monthName} ${year}`],
+      [],
+      ['Agent', 'Total Calls', 'Business Related', 'Biz %', 'Non-Business', 'Non-Biz %', 'Project Leads', 'Leads %'],
+      ...allAgentNames.map(a => {
+        const ag   = calls.filter(c=>c.agent_name===a);
+        const tot  = ag.length;
+        const biz  = ag.filter(c=>c.business_relativity==='Business Related').length;
+        const nbiz = ag.filter(c=>c.business_relativity==='Non-Business Related').length;
+        const ld   = ag.filter(c=>projReasons.includes(c.call_reason)).length;
+        return [a, tot,
+          biz,  tot ? +((biz/tot*100).toFixed(1))  : 0,
+          nbiz, tot ? +((nbiz/tot*100).toFixed(1)) : 0,
+          ld,   tot ? +((ld/tot*100).toFixed(1))   : 0,
+        ];
+      }),
+      ['TOTAL', totalCalls,
+        bizCalls0,  totalCalls ? +((bizCalls0/totalCalls*100).toFixed(1))  : 0,
+        nbizCalls0, totalCalls ? +((nbizCalls0/totalCalls*100).toFixed(1)) : 0,
+        leadCalls0, totalCalls ? +((leadCalls0/totalCalls*100).toFixed(1)) : 0,
+      ],
+    ];
+    const wsBB = XLSX.utils.aoa_to_sheet(wsBBData);
+    wsBB['!cols'] = [{wch:25},{wch:12},{wch:18},{wch:8},{wch:15},{wch:10},{wch:15},{wch:8}];
+    XLSX.utils.book_append_sheet(wb, wsBB, 'Business Breakdown');
+
+    // SHEET 1 — Calls by Reason
+    // ════════════════════════════════════
+    const total1 = calls.length;
+    const reasonRows1 = countBy(calls, 'call_reason');
+    const ws1Data = [
+      [`Calls by Reason — ${monthName} ${year}`],
+      [],
+      ['Reason', 'Count', '%'],
+      ...reasonRows1.map(([r,n]) => [r, n, total1 ? +((n/total1*100).toFixed(1)) : 0]),
+      ['TOTAL', total1, '100%'],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+    ws1['!cols'] = [{wch:35},{wch:10},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Calls by Reason');
+
+    // ════════════════════════════════════
+    // SHEET 2 — Calls by Agent
+    // ════════════════════════════════════
+    const agentRows2 = countBy(calls, 'agent_name');
+    const ws2Data = [
+      [`Calls by Agent — ${monthName} ${year}`],
+      [],
+      ['Agent', 'Total Calls', '%', 'Business Related', 'Non-Business', 'Project Leads'],
+      ...agentRows2.map(([a,n]) => {
+        const ag = calls.filter(c=>c.agent_name===a);
+        const biz  = ag.filter(c=>c.business_relativity==='Business Related').length;
+        const nbiz = ag.filter(c=>c.business_relativity==='Non-Business Related').length;
+        const ld   = ag.filter(c=>projReasons.includes(c.call_reason)).length;
+        return [a, n, total1 ? +((n/total1*100).toFixed(1)) : 0, biz, nbiz, ld];
+      }),
+      ['TOTAL', total1, '100%',
+        calls.filter(c=>c.business_relativity==='Business Related').length,
+        calls.filter(c=>c.business_relativity==='Non-Business Related').length,
+        calls.filter(c=>projReasons.includes(c.call_reason)).length,
+      ],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+    ws2['!cols'] = [{wch:25},{wch:12},{wch:8},{wch:18},{wch:15},{wch:15}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Calls by Agent');
+
+    // ════════════════════════════════════
+    // SHEET 3 — Daily Breakdown (Calls)
+    // ════════════════════════════════════
+    const topReasons3 = countBy(calls, 'call_reason').slice(0,10).map(e=>e[0]);
+    const dailyMap3 = {};
+    calls.forEach(c => { const d=c.logged_at?.split('T')[0]; if(d) { if(!dailyMap3[d]) dailyMap3[d]={}; dailyMap3[d][c.call_reason||'Unknown']=(dailyMap3[d][c.call_reason||'Unknown']||0)+1; } });
+    const sortedDays3 = Object.keys(dailyMap3).sort();
+    const ws3Data = [
+      [`Daily Calls Breakdown — ${monthName} ${year}`],
+      [],
+      ['Date', ...topReasons3, 'Other', 'Total'],
+      ...sortedDays3.map(d => {
+        const row = dailyMap3[d];
+        const topCounts = topReasons3.map(r => row[r]||0);
+        const topSum = topCounts.reduce((a,b)=>a+b,0);
+        const dayTotal = Object.values(row).reduce((a,b)=>a+b,0);
+        return [d, ...topCounts, dayTotal-topSum, dayTotal];
+      }),
+      ['TOTAL',
+        ...topReasons3.map(r => calls.filter(c=>c.call_reason===r).length),
+        calls.filter(c=>!topReasons3.includes(c.call_reason||'Unknown')).length,
+        calls.length,
+      ],
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+    ws3['!cols'] = [{wch:14}, ...topReasons3.map(()=>({wch:18})), {wch:8}, {wch:8}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Daily Breakdown');
+
+    // ════════════════════════════════════
+    // SHEET 4 — Agent KPIs
+    // ════════════════════════════════════
+    const ws4Data = [
+      [`Agent KPIs — ${monthName} ${year}`],
+      [],
+      ['Agent', 'Avg Conformance', 'Total Missing', 'Net Missing', 'Avg AHT', 'Total Calls', 'Excused Hours', 'Quality Score', 'Annual Leave Remaining'],
+      ...agents.map(agent => {
+        const ap = perf.filter(p=>p.agent_id===agent.id);
+        let conf='—', miss='—', net='—', aht='—', totalCalls=0;
+        if (ap.length) {
+          conf = (ap.reduce((s,p)=>s+parseFloat(p.conformance||0),0)/ap.length).toFixed(1)+'%';
+          const ms = ap.reduce((s,p)=>s+(p.missing_sec||0),0);
+          const es = ap.reduce((s,p)=>s+Math.max(0,(p.active_sec||0)-(p.target_sec||0)),0);
+          const ns = Math.max(0,ms-es);
+          miss = ms<=300 ? 'Full Time' : secToTime(ms);
+          net  = ns<=300 ? 'Full Time' : secToTime(ns);
+          const a2 = ap.filter(p=>p.avg_aht>0);
+          if (a2.length) aht = secToTime(Math.round(a2.reduce((s,p)=>s+p.avg_aht,0)/a2.length));
+          totalCalls = ap.reduce((s,p)=>s+(p.calls||0),0);
+        }
+        const excH = exc.filter(e=>e.agent_id===agent.id).length * 2;
+        const a    = ann.find(x=>x.agent_id===agent.id)||{};
+        const left = a.remaining !== undefined ? a.remaining : '—';
+        const q    = qual.find(x=>x.agent_id===agent.id);
+        return [agent.formal_name, conf, miss, net, aht, totalCalls, excH>0?excH+' hrs':'None', q?.score||'—', left];
+      }),
+    ];
+    const ws4 = XLSX.utils.aoa_to_sheet(ws4Data);
+    ws4['!cols'] = [{wch:25},{wch:18},{wch:15},{wch:15},{wch:12},{wch:12},{wch:15},{wch:15},{wch:22}];
+    XLSX.utils.book_append_sheet(wb, ws4, 'Agent KPIs');
+
+    // ════════════════════════════════════
+    // SHEET 5 — WhatsApp by Reason
+    // ════════════════════════════════════
+    const totalWA = wa.length;
+    const waReasonRows = countBy(wa, 'call_reason');
+    const ws5Data = [
+      [`WhatsApp by Reason — ${monthName} ${year}`],
+      [],
+      ['Reason', 'Count', '%'],
+      ...waReasonRows.map(([r,n]) => [r, n, totalWA ? +((n/totalWA*100).toFixed(1)) : 0]),
+      ['TOTAL', totalWA, '100%'],
+    ];
+    const ws5 = XLSX.utils.aoa_to_sheet(ws5Data);
+    ws5['!cols'] = [{wch:35},{wch:10},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws5, 'WhatsApp by Reason');
+
+    // ════════════════════════════════════
+    // SHEET 6 — WhatsApp by Agent
+    // ════════════════════════════════════
+    const waAgentRows = countBy(wa, 'agent_name');
+    const ws6Data = [
+      [`WhatsApp by Agent — ${monthName} ${year}`],
+      [],
+      ['Agent', 'WA Count', '%', 'Business Related', 'Non-Business', 'Project Leads'],
+      ...waAgentRows.map(([a,n]) => {
+        const ag   = wa.filter(w=>w.agent_name===a);
+        const biz  = ag.filter(w=>w.business_relativity==='Business Related').length;
+        const nbiz = ag.filter(w=>w.business_relativity==='Non-Business Related').length;
+        const ld   = ag.filter(w=>projReasons.includes(w.call_reason)).length;
+        return [a, n, totalWA ? +((n/totalWA*100).toFixed(1)) : 0, biz, nbiz, ld];
+      }),
+      ['TOTAL', totalWA, '100%',
+        wa.filter(w=>w.business_relativity==='Business Related').length,
+        wa.filter(w=>w.business_relativity==='Non-Business Related').length,
+        wa.filter(w=>projReasons.includes(w.call_reason)).length,
+      ],
+    ];
+    const ws6 = XLSX.utils.aoa_to_sheet(ws6Data);
+    ws6['!cols'] = [{wch:25},{wch:10},{wch:8},{wch:18},{wch:15},{wch:15}];
+    XLSX.utils.book_append_sheet(wb, ws6, 'WhatsApp by Agent');
+
+    // ════════════════════════════════════
+    // SHEET 7 — WhatsApp Daily
+    // ════════════════════════════════════
+    const waDailyMap = {};
+    wa.forEach(w => { const d=w.logged_at?.split('T')[0]; if(d) waDailyMap[d]=(waDailyMap[d]||0)+1; });
+    const waDailyRows = Object.entries(waDailyMap).sort((a,b)=>a[0].localeCompare(b[0]));
+    const ws7Data = [
+      [`WhatsApp Daily — ${monthName} ${year}`],
+      [],
+      ['Date', 'WA Count'],
+      ...waDailyRows.map(([d,n]) => [d, n]),
+      ['TOTAL', totalWA],
+    ];
+    const ws7 = XLSX.utils.aoa_to_sheet(ws7Data);
+    ws7['!cols'] = [{wch:14},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws7, 'WhatsApp Daily');
+
+    // ── Download ──
+    XLSX.writeFile(wb, `Report_${monthName}_${year}.xlsx`);
+    showToast(`✅ Report_${monthName}_${year}.xlsx downloaded!`, 'success');
+
+  } catch(e) {
+    showToast('Export failed: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-excel"></i> Export Excel';
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>

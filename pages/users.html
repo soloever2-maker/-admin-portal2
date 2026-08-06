@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Users</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ── إضافات خاصة بصفحة اليوزرز ── */
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.perm-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface2, rgba(255,255,255,0.03));
+  border: 1px solid var(--border, rgba(212,175,55,0.15));
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 12.5px;
+  user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.perm-item:hover { border-color: var(--gold, #D4AF37); }
+.perm-item input { accent-color: var(--gold, #D4AF37); cursor: pointer; }
+.perm-item.checked { background: rgba(212,175,55,0.08); border-color: rgba(212,175,55,0.4); }
+.perm-actions { display: flex; gap: 8px; margin-top: 10px; }
+.role-badge-super  { background: rgba(212,175,55,0.15); color: #F4D03F; }
+.role-badge-admin  { background: rgba(139,92,246,0.15); color: #C4B5FD; }
+.role-badge-manager{ background: rgba(59,130,246,0.15); color: #93C5FD; }
+.role-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .5px; }
+.user-inactive td { opacity: .45; }
+</style>
+</head>
+<body>
+
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Users</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Access &amp; Permissions
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="loadUsers()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <button class="btn btn-primary" onclick="openAddPanel()">
+          <i class="fas fa-user-plus"></i> Add User
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">AD</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE CONTENT -->
+    <div class="page-content">
+      <div class="card">
+        <div class="table-wrap">
+          <table class="nos-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Pages</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="users-body">
+              <tr><td colspan="5"><div class="loading-wrap"><div class="spinner"></div><div>Loading...</div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Slide Panel: Add / Edit User ═══ -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Add User</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body">
+    <input type="hidden" id="u-id">
+
+    <div class="form-grid form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Username <span class="req">*</span></label>
+        <input type="text" id="u-username" class="form-input" placeholder="e.g. ahmed.hassan (الإيميل هيبقى username@nationsofsky.com)" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" id="u-fullname" class="form-input" placeholder="Full name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role <span class="req">*</span></label>
+        <select id="u-role" class="form-input" onchange="applyRoleDefaults()">
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+      <div class="form-group" id="pw-group">
+        <label class="form-label">Password <span class="req">*</span></label>
+        <input type="password" id="u-password" class="form-input" placeholder="8+ characters" autocomplete="new-password">
+      </div>
+
+      <div class="form-group form-full">
+        <label class="form-label">Allowed Pages</label>
+        <div class="perm-actions">
+          <button class="btn btn-ghost btn-sm" onclick="setAllPerms(true)"><i class="fas fa-check-double"></i> Select All</button>
+          <button class="btn btn-ghost btn-sm" onclick="setAllPerms(false)"><i class="fas fa-eraser"></i> Clear</button>
+        </div>
+        <div class="perm-grid" id="perm-grid"></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">
+          <i class="fas fa-info-circle"></i> Super Admins automatically see all pages — permission boxes are ignored for them.
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:18px;">
+      <button class="btn btn-primary" id="save-btn" style="flex:1;" onclick="saveUser()">
+        <i class="fas fa-save"></i> Save
+      </button>
+      <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Confirm Modal ═══ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div id="modal-input-wrap" style="display:none; margin:0 0 14px;">
+      <input type="password" id="modal-input" class="form-input" placeholder="New password (8+ characters)" autocomplete="new-password">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText   = getAdminName();
+  document.getElementById('admin-avatar').innerText = initials(getAdminName());
+}
+
+// ═══════════════════════════════════════════
+// إعدادات الصفحات والرولز
+// ═══════════════════════════════════════════
+const ALL_PAGES = [
+  { key: 'dashboard',      label: 'Dashboard' },
+  { key: 'agents',         label: 'Agents' },
+  { key: 'annual-leave',   label: 'Annual Leave' },
+  { key: 'schedule',       label: 'Schedule' },
+  { key: 'schedule-audit', label: 'Schedule Audit' },
+  { key: 'breaks',         label: 'Breaks' },
+  { key: 'requests',       label: 'Requests' },
+  { key: 'kpis',           label: 'KPIs' },
+  { key: 'excuses',        label: 'Excuses' },
+  { key: 'adherence',      label: 'Adherence' },
+  { key: 'waiving',        label: 'Waiving' },
+  { key: 'xcally-live',    label: 'xCALLY Live' },
+  { key: 'xcally-import',  label: 'xCALLY Import' },
+  { key: 'xcally-reports', label: 'xCALLY Reports' },
+  { key: 'fcr',            label: 'FCR Analytics' },
+  { key: 'quality',        label: 'Quality' },
+  { key: 'calllog',        label: 'Call Log' },
+  { key: 'audit-log',      label: 'Audit Log' },
+  { key: 'reference',      label: 'Reference' },
+  { key: 'reports',        label: 'Reports' },
+  { key: 'hr-report',      label: 'HR Report' }
+];
+
+// الصلاحيات الافتراضية لكل رول — عدّلها زي ما تحب
+const ROLE_DEFAULTS = {
+  manager: ['dashboard','requests','schedule','breaks','excuses','adherence','kpis'],
+  admin:   ALL_PAGES.map(p => p.key),
+  super_admin: [] // بيشوف كل حاجة تلقائي
+};
+
+const FN_URL = SUPABASE_URL + '/functions/v1/admin-users';
+let usersCache = [];
+let editingId  = null;
+
+// ═══════════════════════════════════════════
+// استدعاء الـ Edge Function (بهوية السوبر أدمن)
+// ═══════════════════════════════════════════
+async function callAdminFn(payload) {
+  const { data: { session: s } } = await db.auth.getSession();
+  if (!s) { showToast('Session expired — sign in again', 'error'); forceSignOut(); return null; }
+  const res  = await fetch(FN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': 'Bearer ' + s.access_token
+    },
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(json.error || 'Operation failed', 'error'); return null; }
+  return json;
+}
+
+// ═══════════════════════════════════════════
+// تحميل وعرض المستخدمين
+// ═══════════════════════════════════════════
+async function loadUsers() {
+  loading('users-body');
+  try {
+    const { data, error } = await db
+      .from('portal_users')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    usersCache = data || [];
+    renderUsers();
+  } catch (e) {
+    document.getElementById('users-body').innerHTML =
+      `<tr><td colspan="5"><div class="empty-state"><span class="empty-icon">⚠️</span>Could not load users</div></td></tr>`;
+  }
+}
+
+function roleBadge(role) {
+  const map = {
+    super_admin: ['Super Admin', 'role-badge-super'],
+    admin:       ['Admin',       'role-badge-admin'],
+    manager:     ['Manager',     'role-badge-manager']
+  };
+  const [label, cls] = map[role] || [role, 'role-badge-manager'];
+  return `<span class="role-pill ${cls}">${label}</span>`;
+}
+
+function renderUsers() {
+  const body = document.getElementById('users-body');
+  if (!usersCache.length) { empty('users-body', 'No users yet'); return; }
+
+  body.innerHTML = usersCache.map(u => {
+    const pagesCount = u.role === 'super_admin'
+      ? 'All pages'
+      : `${(u.permissions || []).length} page${(u.permissions || []).length === 1 ? '' : 's'}`;
+    const isSelf = session && u.id === session.uid;
+    return `
+    <tr class="${u.is_active ? '' : 'user-inactive'}">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="admin-avatar" style="width:32px;height:32px;font-size:11px;">${initials(u.full_name || u.username)}</div>
+          <div>
+            <div style="font-weight:600;">${u.full_name || u.username}</div>
+            <div style="font-size:11.5px;color:var(--muted);">@${u.username}${isSelf ? ' · you' : ''}</div>
+          </div>
+        </div>
+      </td>
+      <td>${roleBadge(u.role)}</td>
+      <td style="font-size:12.5px;color:var(--muted);">${pagesCount}</td>
+      <td>${u.is_active ? statusBadge('Active') : statusBadge('Inactive')}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" title="Edit role & permissions" onclick="openEditPanel('${u.id}')"><i class="fas fa-user-cog"></i></button>
+        <button class="btn btn-ghost btn-sm" title="Reset password" onclick="askResetPassword('${u.id}')"><i class="fas fa-key"></i></button>
+        ${isSelf ? '' : `
+          <button class="btn btn-ghost btn-sm" title="${u.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleActive('${u.id}')">
+            <i class="fas ${u.is_active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" title="Delete" style="color:#EF4444;" onclick="askDelete('${u.id}')"><i class="fas fa-trash"></i></button>
+        `}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// إضافة / تعديل مستخدم
+// ═══════════════════════════════════════════
+function renderPermGrid(selected) {
+  const grid = document.getElementById('perm-grid');
+  grid.innerHTML = ALL_PAGES.map(p => `
+    <label class="perm-item ${selected.includes(p.key) ? 'checked' : ''}">
+      <input type="checkbox" value="${p.key}" ${selected.includes(p.key) ? 'checked' : ''}
+             onchange="this.closest('.perm-item').classList.toggle('checked', this.checked)">
+      ${p.label}
+    </label>`).join('');
+}
+
+function getSelectedPerms() {
+  return Array.from(document.querySelectorAll('#perm-grid input:checked')).map(i => i.value);
+}
+
+function setAllPerms(on) {
+  document.querySelectorAll('#perm-grid input').forEach(i => {
+    i.checked = on;
+    i.closest('.perm-item').classList.toggle('checked', on);
+  });
+}
+
+function applyRoleDefaults() {
+  if (editingId) return; // في التعديل منغيرش اختيارات موجودة
+  const role = document.getElementById('u-role').value;
+  renderPermGrid(ROLE_DEFAULTS[role] || []);
+}
+
+function openAddPanel() {
+  editingId = null;
+  document.getElementById('panel-title').innerText = 'Add User';
+  document.getElementById('u-id').value = '';
+  document.getElementById('u-username').value = '';
+  document.getElementById('u-username').disabled = false;
+  document.getElementById('u-fullname').value = '';
+  document.getElementById('u-role').value = 'manager';
+  document.getElementById('u-password').value = '';
+  document.getElementById('pw-group').style.display = '';
+  renderPermGrid(ROLE_DEFAULTS.manager);
+  openPanel();
+}
+
+function openEditPanel(id) {
+  const u = usersCache.find(x => x.id === id);
+  if (!u) return;
+  editingId = id;
+  document.getElementById('panel-title').innerText = 'Edit User';
+  document.getElementById('u-id').value = id;
+  document.getElementById('u-username').value = u.username;
+  document.getElementById('u-username').disabled = true; // اليوزرنيم ثابت
+  document.getElementById('u-fullname').value = u.full_name || '';
+  document.getElementById('u-role').value = u.role;
+  document.getElementById('pw-group').style.display = 'none'; // الباسورد من زرار Reset
+  renderPermGrid(u.permissions || []);
+  openPanel();
+}
+
+async function saveUser() {
+  const btn      = document.getElementById('save-btn');
+  const username = document.getElementById('u-username').value.trim().toLowerCase();
+  const fullName = document.getElementById('u-fullname').value.trim();
+  const role     = document.getElementById('u-role').value;
+  const perms    = getSelectedPerms();
+
+  if (!username) { showToast('Username is required', 'warning'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+  try {
+    if (!editingId) {
+      // ── إنشاء جديد (عبر الـ Edge Function) ──
+      const password = document.getElementById('u-password').value;
+      if (!password || password.length < 8) {
+        showToast('Password must be at least 8 characters', 'warning');
+        return;
+      }
+      const out = await callAdminFn({
+        action: 'create_user',
+        username, full_name: fullName, role, permissions: perms, password
+      });
+      if (!out) return;
+      showToast('User created — they must change password on first login', 'success');
+      if (typeof logAudit === 'function') try { logAudit({ module: 'Users', action: 'INSERT', description: `Created user @${username} (${role})` }); } catch(e) {}
+    } else {
+      // ── تعديل رول/صلاحيات (مباشرة — RLS بيسمح للسوبر أدمن) ──
+      const { error } = await db.from('portal_users')
+        .update({ role, full_name: fullName, permissions: perms })
+        .eq('id', editingId);
+      if (error) { showToast(error.message, 'error'); return; }
+      showToast('User updated', 'success');
+      if (typeof logAudit === 'function') try { logAudit({ module: 'Users', action: 'UPDATE', description: `Updated role/permissions for user ${editingId}` }); } catch(e) {}
+    }
+    closePanel();
+    loadUsers();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save';
+  }
+}
+
+// ═══════════════════════════════════════════
+// إعادة تعيين باسورد
+// ═══════════════════════════════════════════
+function askResetPassword(id) {
+  const u = usersCache.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('modal-title').innerText = 'Reset Password';
+  document.getElementById('modal-msg').innerText =
+    `Set a new password for @${u.username}. They will be forced to change it on next login.`;
+  document.getElementById('modal-input-wrap').style.display = 'block';
+  document.getElementById('modal-input').value = '';
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick = async () => {
+    const pw = document.getElementById('modal-input').value;
+    if (!pw || pw.length < 8) { showToast('Password must be at least 8 characters', 'warning'); return; }
+    closeUsersModal();
+    const out = await callAdminFn({ action: 'reset_password', user_id: id, new_password: pw });
+    if (out) {
+      showToast(`Password reset for @${u.username}`, 'success');
+      if (typeof logAudit === 'function') try { logAudit({ module: 'Users', action: 'UPDATE', description: `Reset password for @${u.username}` }); } catch(e) {}
+    }
+  };
+}
+
+// ═══════════════════════════════════════════
+// تفعيل / تعطيل
+// ═══════════════════════════════════════════
+async function toggleActive(id) {
+  const u = usersCache.find(x => x.id === id);
+  if (!u) return;
+  const { error } = await db.from('portal_users')
+    .update({ is_active: !u.is_active })
+    .eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  showToast(u.is_active ? `@${u.username} deactivated` : `@${u.username} activated`, 'success');
+  loadUsers();
+}
+
+// ═══════════════════════════════════════════
+// حذف
+// ═══════════════════════════════════════════
+function askDelete(id) {
+  const u = usersCache.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('modal-title').innerText = 'Delete User';
+  document.getElementById('modal-msg').innerText =
+    `Delete @${u.username} permanently? This cannot be undone.`;
+  document.getElementById('modal-input-wrap').style.display = 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick = async () => {
+    closeUsersModal();
+    const out = await callAdminFn({ action: 'delete_user', user_id: id });
+    if (out) {
+      showToast(`@${u.username} deleted`, 'success');
+      if (typeof logAudit === 'function') try { logAudit({ module: 'Users', action: 'DELETE', description: `Deleted user @${u.username}` }); } catch(e) {}
+      loadUsers();
+    }
+  };
+}
+
+function closeUsersModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+// خلي closeModal بتاعة ui.js تشتغل برضه
+window.closeModal = closeUsersModal;
+
+// ── Start ──
+loadUsers();
+</script>
+
+</body>
+</html>

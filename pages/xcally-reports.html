@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — xCALLY Reports</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.filter-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-radius: 8px;
+  border-left: 3px solid var(--gold);
+  font-size: 13px;
+  font-weight: 600;
+}
+.stat-label {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.stat-value {
+  color: var(--gold);
+  font-size: 18px;
+  font-weight: 800;
+}
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">xCALLY Reports</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Call Data Analytics</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="exportToCSV()"><i class="fas fa-download"></i> Export CSV</button>
+        <button class="btn btn-ghost" onclick="loadAllData()"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- TABS -->
+      <div class="fade-up" style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid var(--border);padding-bottom:0;">
+        <button class="tab-btn active" id="tab-btn-log" onclick="switchXcallyTab('log',this)" style="padding:8px 18px;border:none;background:none;color:var(--gold);font-weight:700;border-bottom:2px solid var(--gold);cursor:pointer;font-size:13px;">📋 Call Log</button>
+        <button class="tab-btn" id="tab-btn-compare" onclick="switchXcallyTab('compare',this)" style="padding:8px 18px;border:none;background:none;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;">⚖️ Comparison</button>
+      </div>
+
+      <!-- ═══ TAB: CALL LOG ═══ -->
+      <div id="xcally-tab-log">
+
+      <!-- STATISTICS CARDS -->
+      <div class="fade-up" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">
+        <div class="stat-card">
+          <div class="stat-label">Total Calls</div>
+          <div class="stat-value" id="stat-total-calls">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Duration</div>
+          <div class="stat-value" id="stat-total-duration">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Call Duration</div>
+          <div class="stat-value" id="stat-avg-duration">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Unique Agents</div>
+          <div class="stat-value" id="stat-unique-agents">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Unique Customers</div>
+          <div class="stat-value" id="stat-unique-customers">—</div>
+        </div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-filter" style="color:var(--gold)"></i> Filters</div>
+        </div>
+        <div class="section-body">
+          <div class="filter-section">
+            <div class="form-group">
+              <label class="form-label">Date From</label>
+              <input type="date" id="filter-date-from" class="form-input" onchange="loadAllData()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date To</label>
+              <input type="date" id="filter-date-to" class="form-input" onchange="loadAllData()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Agent</label>
+              <select id="filter-agent" class="form-input" onchange="loadAllData()">
+                <option value="">All Agents</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Call Channel</label>
+              <select id="filter-channel" class="form-input" onchange="loadAllData()">
+                <option value="">All Channels</option>
+                <option value="phone">Phone</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Call Source</label>
+              <select id="filter-source" class="form-input" onchange="loadAllData()">
+                <option value="">All Sources</option>
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Search (Customer/Mobile)</label>
+              <input type="text" id="filter-search" class="form-input" placeholder="Search..." oninput="debounceSearch()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CALL LOGS TABLE -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-phone-volume" style="color:var(--gold)"></i> Call Records</div>
+          <span id="table-info" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Date/Time</th>
+                  <th>Agent</th>
+                  <th>Customer</th>
+                  <th>Mobile</th>
+                  <th>Reason</th>
+                  <th>Channel</th>
+                  <th>Source</th>
+                  <th>Duration</th>
+                  <th>Talk Time</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="calls-tbody">
+                <tr><td colspan="10"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--border);">
+            <span id="pagination-info" style="font-size:12px;color:var(--muted);"></span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost btn-sm" id="prev-btn" onclick="prevPage()">
+                <i class="fas fa-chevron-left"></i> Prev
+              </button>
+              <button class="btn btn-ghost btn-sm" id="next-btn" onclick="nextPage()">
+                Next <i class="fas fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- end xcally-tab-log -->
+
+      <!-- ═══ TAB: COMPARISON ═══ -->
+      <div id="xcally-tab-compare" style="display:none;">
+
+        <!-- Comparison Filters -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-sliders-h" style="color:var(--gold)"></i> Comparison Filters</div>
+            <div style="font-size:11px;color:var(--muted);">Outbound calls with Talk Time > 10s only — excludes wrong numbers &amp; dropped</div>
+          </div>
+          <div class="section-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+              <div class="form-group">
+                <label class="form-label">Date From</label>
+                <input type="date" id="cmp-date-from" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Date To</label>
+                <input type="date" id="cmp-date-to" class="form-input">
+              </div>
+              <div>
+                <button class="btn btn-primary" onclick="loadComparison()" style="width:100%;margin-top:20px;">
+                  <i class="fas fa-sync-alt"></i> Run Comparison
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div id="cmp-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;"></div>
+
+        <!-- Comparison Table -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-balance-scale" style="color:var(--gold)"></i> Agent Comparison — xCALLY Outbound vs Manual Logged</div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;">Agent</th>
+                    <th title="Connected outbound calls from xCALLY (talk time > 10s)">📡 xCALLY OB</th>
+                    <th title="Outbound calls manually logged by agent">✍️ Manual OB</th>
+                    <th title="xCALLY - Manual (positive = under-logged)">Gap</th>
+                    <th title="Gap as % of xCALLY outbound">Gap %</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="cmp-tbody">
+                  <tr><td colspan="6"><div class="empty-state"><span class="empty-icon">📊</span>Run comparison to see results</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end xcally-tab-compare -->
+
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Call Details</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const PAGE_SIZE = 50;
+let currentPage = 0;
+let totalCount = 0;
+let searchQuery = '';
+let searchTimer = null;
+let allData = [];
+
+// ── Date Utilities ──
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function localMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function localDateToUTCStart(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+}
+function localDateToUTCEnd(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+}
+
+const TODAY = localToday();
+const MONTH = localMonth();
+
+// ── Debounced Search ──
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchQuery = document.getElementById('filter-search').value.toLowerCase();
+  searchTimer = setTimeout(() => loadAllData(), 300);
+}
+
+// ── Get current filter values ──
+function getFilters() {
+  return {
+    dateFrom: document.getElementById('filter-date-from').value,
+    dateTo:   document.getElementById('filter-date-to').value,
+    agent:    document.getElementById('filter-agent').value,
+    channel:  document.getElementById('filter-channel').value,
+    source:   document.getElementById('filter-source').value,
+  };
+}
+
+// ── Apply Filters ──
+function applyFilters(q, filters) {
+  if (filters.dateFrom) q = q.gte('call_date', filters.dateFrom);
+  if (filters.dateTo)   q = q.lte('call_date', filters.dateTo);
+  if (filters.agent)    q = q.eq('agent_name', filters.agent);
+  if (filters.channel)  q = q.eq('call_channel', filters.channel);
+  if (filters.source)   q = q.eq('call_source', filters.source);
+  return q;
+}
+
+// ── Initialize ──
+async function init() {
+  document.getElementById('filter-date-from').value = MONTH + '-01';
+  document.getElementById('filter-date-to').value   = TODAY;
+  document.getElementById('cmp-date-from').value    = MONTH + '-01';
+  document.getElementById('cmp-date-to').value      = TODAY;
+
+  try {
+    const { data: agents } = await db.from('agents').select('formal_name').order('formal_name');
+    const agentSel = document.getElementById('filter-agent');
+    (agents||[]).forEach(a => agentSel.add(new Option(a.formal_name, a.formal_name)));
+  } catch(e) {
+    console.error('Failed to load agents:', e);
+  }
+
+  await loadAllData();
+}
+
+// ── Load All Data ──
+async function loadAllData() {
+  currentPage = 0;
+  await Promise.all([loadStats(), loadCalls()]);
+}
+
+// ── Load Statistics ──
+async function loadStats() {
+  try {
+    const filters = getFilters();
+
+    // Count query (head:true = no rows returned, just the count)
+    let countQ = db.from('xcally_calls_logs')
+      .select('*', { count: 'exact', head: true });
+    countQ = applyFilters(countQ, filters);
+    const { count, error: countErr } = await countQ;
+    if (countErr) throw countErr;
+
+    // Fetch only the 3 lightweight columns needed for aggregates
+    // Cap at 5000 rows to avoid timeouts on large datasets
+    let aggQ = db.from('xcally_calls_logs')
+      .select('agent_name,customer_name,call_duration')
+      .range(0, 4999);
+    aggQ = applyFilters(aggQ, filters);
+    const { data, error: aggErr } = await aggQ;
+    if (aggErr) throw aggErr;
+
+    const records = data || [];
+    allData = records;
+
+    const totalCalls     = count || 0;
+    const totalDuration  = records.reduce((sum, r) => sum + (r.call_duration || 0), 0);
+    const avgDuration    = records.length > 0 ? Math.round(totalDuration / records.length) : 0;
+    const uniqueAgents   = new Set(records.map(r => r.agent_name)).size;
+    const uniqueCustomers = new Set(records.map(r => r.customer_name).filter(Boolean)).size;
+
+    document.getElementById('stat-total-calls').innerText    = totalCalls.toLocaleString();
+    document.getElementById('stat-total-duration').innerText  = secToTime(totalDuration);
+    document.getElementById('stat-avg-duration').innerText    = secToTime(avgDuration);
+    document.getElementById('stat-unique-agents').innerText   = uniqueAgents;
+    document.getElementById('stat-unique-customers').innerText = uniqueCustomers;
+
+  } catch(e) {
+    showToast('Failed to load stats: ' + e.message, 'error');
+  }
+}
+
+// ── Load Calls ──
+async function loadCalls() {
+  const tbody = document.getElementById('calls-tbody');
+  tbody.innerHTML = '<tr><td colspan="10"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+
+  try {
+    const filters = getFilters();
+    let q = db.from('xcally_calls_logs').select('*').order('call_date', { ascending: false }).order('call_time', { ascending: false });
+    q = applyFilters(q, filters);
+
+    const { data, error, count } = await q.range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const records = data || [];
+    totalCount = count || 0;
+
+    if (!records.length) {
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">📭</span>No records found</div></td></tr>';
+      document.getElementById('pagination-info').innerText = 'No records';
+      return;
+    }
+
+    tbody.innerHTML = records.map(r => {
+      const dateTime = r.call_date + ' ' + (r.call_time || '');
+      const channel = r.call_channel || '—';
+      const source = r.call_source || '—';
+      const duration = secToTime(r.call_duration || 0);
+      const talkTime = secToTime(r.talk_duration || 0);
+      return `<tr onclick="showDetail(${JSON.stringify(r).replace(/"/g, '&quot;')})">
+        <td style="cursor:pointer;color:var(--gold);font-weight:700;">${dateTime}</td>
+        <td style="cursor:pointer;">${r.agent_name || '—'}</td>
+        <td style="cursor:pointer;">${r.customer_name || '—'}</td>
+        <td style="cursor:pointer;font-family:monospace;font-size:12px;">${r.customer_mobile || '—'}</td>
+        <td style="cursor:pointer;">${r.call_reason || '—'}</td>
+        <td style="cursor:pointer;"><span class="badge badge-info">${channel}</span></td>
+        <td style="cursor:pointer;"><span class="badge badge-success">${source}</span></td>
+        <td style="cursor:pointer;font-family:monospace;font-size:12px;">${duration}</td>
+        <td style="cursor:pointer;font-family:monospace;font-size:12px;">${talkTime}</td>
+        <td style="cursor:pointer;"><button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); deleteRecord('${r.id}')"><i class="fas fa-trash"></i></button></td>
+      </tr>`;
+    }).join('');
+
+    const from = currentPage * PAGE_SIZE + 1;
+    const to = Math.min((currentPage + 1) * PAGE_SIZE, totalCount);
+    document.getElementById('pagination-info').innerText = `Showing ${from}–${to} of ${totalCount}`;
+    document.getElementById('prev-btn').disabled = currentPage === 0;
+    document.getElementById('next-btn').disabled = to >= totalCount;
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">❌</span>Failed to load</div></td></tr>';
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── Show Detail Panel ──
+function showDetail(record) {
+  const html = `
+    <div style="display:grid;gap:12px;">
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Date & Time</div>
+        <div style="font-weight:700;">${record.call_date} ${record.call_time || ''}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Agent</div>
+        <div style="font-weight:700;">${record.agent_name || '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Customer</div>
+        <div style="font-weight:700;">${record.customer_name || '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mobile</div>
+        <div style="font-family:monospace;font-size:12px;">${record.customer_mobile || '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Call Reason</div>
+        <div>${record.call_reason || '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Channel</div>
+        <div><span class="badge badge-info">${record.call_channel || '—'}</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Source</div>
+        <div><span class="badge badge-success">${record.call_source || '—'}</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Total Duration</div>
+        <div style="font-family:monospace;font-size:12px;font-weight:700;">${secToTime(record.call_duration || 0)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Talk Time</div>
+        <div style="font-family:monospace;font-size:12px;font-weight:700;">${secToTime(record.talk_duration || 0)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Event Type</div>
+        <div>${record.event_type || '—'}</div>
+      </div>
+      ${record.media_url ? `<div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">Media</div>
+        <a href="${record.media_url}" target="_blank" style="color:var(--gold);text-decoration:underline;">View Recording</a>
+      </div>` : ''}
+    </div>
+  `;
+  document.getElementById('panel-body').innerHTML = html;
+  openPanel('Call Details');
+}
+
+// ── Delete Record ──
+async function deleteRecord(id) {
+  if (!confirm('Are you sure you want to delete this record?')) return;
+  try {
+    const { error } = await db.from('xcally_calls_logs').delete().eq('id', id);
+    if (error) throw error;
+    showToast('Record deleted!', 'success');
+    await loadAllData();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── Pagination ──
+function prevPage() {
+  if (currentPage > 0) {
+    currentPage--;
+    loadCalls();
+  }
+}
+function nextPage() {
+  if ((currentPage + 1) * PAGE_SIZE < totalCount) {
+    currentPage++;
+    loadCalls();
+  }
+}
+
+// ── Export to CSV ──
+function exportToCSV() {
+  if (!allData.length) {
+    showToast('No data to export', 'warning');
+    return;
+  }
+
+  const headers = ['Date', 'Time', 'Agent', 'Customer', 'Mobile', 'Reason', 'Channel', 'Source', 'Duration', 'Talk Time'];
+  const rows = allData.map(r => [
+    r.call_date,
+    r.call_time || '',
+    r.agent_name || '',
+    r.customer_name || '',
+    r.customer_mobile || '',
+    r.call_reason || '',
+    r.call_channel || '',
+    r.call_source || '',
+    secToTime(r.call_duration || 0),
+    secToTime(r.talk_duration || 0),
+  ]);
+
+  let csv = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csv += row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'xcally_calls_' + new Date().toISOString().split('T')[0] + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  showToast('CSV exported!', 'success');
+}
+
+// ── Time Formatting ──
+function secToTime(s) {
+  if (!s && s !== 0) return '—';
+  const h = Math.floor(s / 3600).toString().padStart(2, '0');
+  const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return h + ':' + m + ':' + sec;
+}
+
+// ── Tab Switching ──
+function switchXcallyTab(tab, btn) {
+  document.getElementById('xcally-tab-log').style.display     = tab === 'log'     ? '' : 'none';
+  document.getElementById('xcally-tab-compare').style.display = tab === 'compare' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.style.color       = 'var(--muted)';
+    b.style.fontWeight  = '600';
+    b.style.borderBottom= '2px solid transparent';
+  });
+  btn.style.color       = 'var(--gold)';
+  btn.style.fontWeight  = '700';
+  btn.style.borderBottom= '2px solid var(--gold)';
+}
+
+// ── Comparison Logic ──
+async function loadComparison() {
+  const dateFrom = document.getElementById('cmp-date-from').value;
+  const dateTo   = document.getElementById('cmp-date-to').value;
+  if (!dateFrom || !dateTo) { showToast('Select date range first', 'warning'); return; }
+
+  const tbody = document.getElementById('cmp-tbody');
+  tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  document.getElementById('cmp-summary').innerHTML = '';
+
+  try {
+    // Fetch both data sources in parallel
+    const [xcallyRes, manualRes, agentsRes] = await Promise.all([
+      // xCALLY: outbound calls with real talk time (> 10s = connected)
+      db.from('xcally_calls_logs')
+        .select('agent_name,talk_duration')
+        .eq('call_source','outbound')
+        .gt('talk_duration', 10)
+        .gte('call_date', dateFrom)
+        .lte('call_date', dateTo),
+      // Manual: outbound call_logs
+      db.from('call_logs')
+        .select('agent_name,call_direction')
+        .eq('call_direction','outbound')
+        .gte('logged_at', dateFrom + 'T00:00:00')
+        .lte('logged_at', dateTo + 'T23:59:59'),
+      db.from('agents').select('formal_name').order('formal_name'),
+    ]);
+
+    if (xcallyRes.error) throw xcallyRes.error;
+    if (manualRes.error) throw manualRes.error;
+
+    // Aggregate xCALLY per agent
+    const xcallyMap = {};
+    (xcallyRes.data || []).forEach(r => {
+      const k = (r.agent_name||'').toLowerCase().replace(/\s+/g,'');
+      xcallyMap[k] = (xcallyMap[k] || 0) + 1;
+    });
+
+    // Aggregate manual per agent
+    const manualMap = {};
+    (manualRes.data || []).forEach(r => {
+      const k = (r.agent_name||'').toLowerCase().replace(/\s+/g,'');
+      manualMap[k] = (manualMap[k] || 0) + 1;
+    });
+
+    // Build results per agent
+    const agents = (agentsRes.data || []).map(a => a.formal_name);
+    const allKeys = new Set([
+      ...Object.keys(xcallyMap),
+      ...Object.keys(manualMap),
+      ...agents.map(n => n.toLowerCase().replace(/\s+/g,'')),
+    ]);
+
+    const rows = [];
+    allKeys.forEach(key => {
+      const displayName = agents.find(n => n.toLowerCase().replace(/\s+/g,'') === key) || key;
+      const xcally = xcallyMap[key] || 0;
+      const manual = manualMap[key] || 0;
+      const gap    = xcally - manual;
+      const gapPct = xcally > 0 ? Math.round((gap / xcally) * 100) : 0;
+      if (xcally === 0 && manual === 0) return; // skip if no data
+      rows.push({ displayName, xcally, manual, gap, gapPct });
+    });
+
+    // Sort by gap descending (worst first)
+    rows.sort((a,b) => b.gap - a.gap);
+
+    // Summary cards
+    const totalXcally = rows.reduce((s,r) => s + r.xcally, 0);
+    const totalManual = rows.reduce((s,r) => s + r.manual, 0);
+    const totalGap    = totalXcally - totalManual;
+    const avgGapPct   = totalXcally > 0 ? Math.round((totalGap / totalXcally) * 100) : 0;
+
+    document.getElementById('cmp-summary').innerHTML = `
+      <div class="stat-card"><div class="stat-label">📡 xCALLY Outbound (Connected)</div><div class="stat-value" style="color:#60A5FA;">${totalXcally}</div></div>
+      <div class="stat-card"><div class="stat-label">✍️ Manually Logged</div><div class="stat-value" style="color:#A78BFA;">${totalManual}</div></div>
+      <div class="stat-card"><div class="stat-label">Gap (Under-logged)</div><div class="stat-value" style="color:${totalGap>0?'#EF4444':'#10B981'};">${totalGap}</div></div>
+      <div class="stat-card"><div class="stat-label">Logging Rate</div><div class="stat-value" style="color:${avgGapPct<=10?'#10B981':avgGapPct<=25?'#F59E0B':'#EF4444'};">${100-avgGapPct}%</div></div>
+    `;
+
+    // Table rows
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">📭</span>No data found for this period</div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      const gapColor  = r.gap <= 0 ? '#10B981' : r.gap <= 5 ? '#F59E0B' : '#EF4444';
+      const pctColor  = r.gapPct <= 10 ? '#10B981' : r.gapPct <= 25 ? '#F59E0B' : '#EF4444';
+      const status    = r.gapPct <= 10
+        ? '<span class="badge badge-success">✅ Good</span>'
+        : r.gapPct <= 25
+          ? '<span class="badge" style="background:rgba(245,158,11,.15);color:#F59E0B;">⚠️ Review</span>'
+          : '<span class="badge badge-danger">❌ Under-logged</span>';
+      return `<tr>
+        <td style="font-weight:700;">${r.displayName}</td>
+        <td style="text-align:center;font-weight:700;color:#60A5FA;">${r.xcally}</td>
+        <td style="text-align:center;font-weight:700;color:#A78BFA;">${r.manual}</td>
+        <td style="text-align:center;font-weight:800;color:${gapColor};">${r.gap > 0 ? '+'+r.gap : r.gap}</td>
+        <td style="text-align:center;font-weight:800;color:${pctColor};">${r.gapPct}%</td>
+        <td style="text-align:center;">${status}</td>
+      </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">❌</span>Failed: '+e.message+'</div></td></tr>';
+    showToast('Comparison failed: ' + e.message, 'error');
+  }
+}
+
+// ── Initialize on load ──
+init();
+</script>
+</body>
+</html>

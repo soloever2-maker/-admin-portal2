@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — xCALLY Live</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  .live-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#16a34a;
+            margin-right:6px;animation:livePulse 1.5s infinite;vertical-align:middle;}
+  @keyframes livePulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .stale .live-dot{background:#e3342f;animation:none;}
+  .agent-cell{display:flex;align-items:center;gap:10px;}
+  .agent-av{width:32px;height:32px;border-radius:50%;background:var(--accent-grad,#4f8af9);
+            color:#fff;display:flex;align-items:center;justify-content:center;
+            font-size:12px;font-weight:700;flex-shrink:0;}
+  .ext{font-size:11px;color:var(--muted);}
+  .mono{font-family:Consolas,monospace;font-size:12px;color:var(--muted);}
+  .connect-card{max-width:420px;margin:40px auto;padding:28px;background:var(--surface);
+                border:1px solid var(--border);border-radius:14px;}
+  .connect-card h3{margin-bottom:6px;}
+  .connect-card p{font-size:13px;color:var(--muted);margin-bottom:18px;}
+  .connect-card input{width:100%;padding:10px 12px;margin-bottom:12px;border-radius:8px;
+                      border:1px solid var(--border);background:var(--bg);color:var(--text);}
+  .iframe-wrap{height:calc(100vh - 140px);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .iframe-wrap iframe{width:100%;height:100%;border:0;}
+  .mode-note{font-size:12px;color:var(--muted);margin:8px 2px;}
+</style>
+</head>
+<body>
+
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title"><span class="live-dot" id="live-dot"></span>xCALLY Live</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Realtime Agents <span id="last-update" class="mono"></span></div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="switchMode()" title="Switch view mode"><i class="fas fa-exchange-alt"></i></button>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ══ وضع 1: اتصال مباشر بالـ API ══ -->
+      <div id="view-connect" style="display:none;">
+        <div class="connect-card fade-up">
+          <h3><i class="fas fa-plug"></i> Connect to xCALLY</h3>
+          <p>ادخل بيانات أدمن xCALLY (بتتحفظ في المتصفح للجلسة الحالية بس — مش بتترفع في أي حتة)</p>
+          <input id="xc-user" placeholder="Username (admin)" value="admin">
+          <input id="xc-pass" type="password" placeholder="Password">
+          <button class="btn btn-primary" style="width:100%;" onclick="doConnect()">
+            <i class="fas fa-link"></i> Connect
+          </button>
+          <div id="connect-err" class="mode-note" style="color:#e3342f;display:none;"></div>
+        </div>
+      </div>
+
+      <!-- ══ وضع 2: الداشبورد المدمجة ══ -->
+      <div id="view-dashboard" style="display:none;">
+        <div class="kpi-grid fade-up" style="grid-template-columns:repeat(5,1fr);">
+          <div class="kpi-card blue"><span class="kpi-icon">👥</span><div class="kpi-label">Total Agents</div><div class="kpi-value" id="k-total">—</div></div>
+          <div class="kpi-card" style="border-top-color:#16a34a;"><span class="kpi-icon">🟢</span><div class="kpi-label">Idle</div><div class="kpi-value" id="k-idle" style="color:#16a34a;">—</div></div>
+          <div class="kpi-card" style="border-top-color:#e3342f;"><span class="kpi-icon">📞</span><div class="kpi-label">In Call / Busy</div><div class="kpi-value" id="k-busy" style="color:#e3342f;">—</div></div>
+          <div class="kpi-card" style="border-top-color:#f6993f;"><span class="kpi-icon">☕</span><div class="kpi-label">Pause</div><div class="kpi-value" id="k-pause" style="color:#f6993f;">—</div></div>
+          <div class="kpi-card" style="border-top-color:#64748b;"><span class="kpi-icon">⚫</span><div class="kpi-label">Offline</div><div class="kpi-value" id="k-off" style="color:#64748b;">—</div></div>
+        </div>
+        <div class="card fade-up" style="margin-top:16px;">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead><tr><th>Agent</th><th>Voice</th><th>Chat</th><th>Email</th><th>SMS</th><th>Open Channel</th><th>WhatsApp</th><th>Pause</th></tr></thead>
+              <tbody id="agents-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ وضع 3: iframe (احتياطي) ══ -->
+      <div id="view-iframe" style="display:none;">
+        <div class="mode-note">
+          ⚠ الوضع ده بيعرض صفحة xCALLY نفسها — لازم تكون عامل login في xCALLY في نفس المتصفح.
+          <a href="#" onclick="openXcally();return false;">افتح xCALLY واعمل login من هنا</a>
+        </div>
+        <div class="iframe-wrap fade-up">
+          <iframe id="xc-frame" src="about:blank"></iframe>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+const session = checkAuth();
+
+/* ═══ الإعداد الوحيد: عنوان سيرفر xCALLY ═══ */
+const XCALLY_URL   = 'https://172.16.1.20';
+const REALTIME_URL = XCALLY_URL + '/voice/realtime/agents';
+const REFRESH_MS   = 4000;
+
+let token = sessionStorage.getItem('xc-token') || null;
+let timer = null;
+let mode  = 'api';   // api | iframe
+
+function show(id){
+  ['view-connect','view-dashboard','view-iframe'].forEach(v =>
+    document.getElementById(v).style.display = (v === id ? '' : 'none'));
+}
+
+function openXcally(){ window.open(XCALLY_URL, '_blank'); }
+
+function switchMode(){
+  if (mode === 'api') startIframeMode('تم التحويل يدويًا');
+  else { mode = 'api'; clearInterval(timer); timer = null;
+         token ? startPolling() : show('view-connect'); }
+}
+
+/* ─── وضع الـ API المباشر ─── */
+async function doConnect(){
+  const user = document.getElementById('xc-user').value.trim();
+  const pass = document.getElementById('xc-pass').value;
+  const err  = document.getElementById('connect-err');
+  err.style.display = 'none';
+  try{
+    const res = await fetch(XCALLY_URL + '/api/auth/local', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name:user, password:pass })
+    });
+    if(!res.ok) throw new Error('بيانات الدخول غلط (HTTP ' + res.status + ')');
+    const data = await res.json();
+    token = data.token;
+    sessionStorage.setItem('xc-token', token);
+    startPolling();
+  }catch(e){
+    // TypeError: Failed to fetch = المتصفح منع الاتصال (CORS / شهادة / شبكة)
+    if (e instanceof TypeError) {
+      startIframeMode('xCALLY مانع الاتصال المباشر من البورتال — اتحولنا لوضع العرض المدمج');
+    } else {
+      err.textContent = e.message;
+      err.style.display = 'block';
+    }
+  }
+}
+
+async function fetchAgents(){
+  const res = await fetch(XCALLY_URL + '/api/rpc/agents', {
+    headers:{ Authorization:'Bearer ' + token }
+  });
+  if (res.status === 401) { token = null; sessionStorage.removeItem('xc-token');
+                            clearInterval(timer); timer = null; show('view-connect'); return null; }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+function badgeFor(status, pause, online){
+  if (online === false) return `<span class="badge badge-muted">OFFLINE</span>`;
+  if (pause)            return `<span class="badge badge-warning">PAUSE</span>`;
+  const s = String(status || 'idle').toLowerCase();
+  if (/busy|talk|call|ring|progress/.test(s))
+    return `<span class="badge badge-danger">${s.toUpperCase()}</span>`;
+  return `<span class="badge badge-success">IDLE</span>`;
+}
+
+async function refresh(){
+  try{
+    const data = await fetchAgents();
+    if (!data) return;
+    const agents = (data.rows || data);
+    let idle=0, busy=0, pause=0, off=0;
+
+    document.getElementById('agents-body').innerHTML = agents.map(a=>{
+      const name = a.fullname || a.name, s = String(a.voiceStatus || a.status || '').toLowerCase();
+      if (a.online === false) off++;
+      else if (a.pause) pause++;
+      else if (/busy|talk|call|ring|progress/.test(s)) busy++;
+      else idle++;
+      return `<tr>
+        <td><div class="agent-cell"><div class="agent-av">${initials(name)}</div>
+          <div><div>${name || '-'}</div><div class="ext">&lt;${a.internal || ''}&gt;</div></div></div></td>
+        <td>${badgeFor(a.voiceStatus || a.status, a.pause, a.online)}</td>
+        <td>${badgeFor(a.chatStatus, false, a.online)}</td>
+        <td>${badgeFor(a.mailStatus, false, a.online)}</td>
+        <td>${badgeFor(a.smsStatus, false, a.online)}</td>
+        <td>${badgeFor(a.openchannelStatus, false, a.online)}</td>
+        <td>${badgeFor(a.whatsappStatus, false, a.online)}</td>
+        <td class="mono">${a.pause ? (a.pauseType || 'Paused') : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('k-total').textContent = agents.length;
+    document.getElementById('k-idle').textContent  = idle;
+    document.getElementById('k-busy').textContent  = busy;
+    document.getElementById('k-pause').textContent = pause;
+    document.getElementById('k-off').textContent   = off;
+    document.getElementById('last-update').textContent = ' · Updated ' + new Date().toLocaleTimeString('en-GB');
+    document.querySelector('.page-title').classList.remove('stale');
+  }catch(e){
+    document.querySelector('.page-title').classList.add('stale');
+    if (e instanceof TypeError) startIframeMode('الاتصال المباشر اتقطع — اتحولنا للعرض المدمج');
+  }
+}
+
+function startPolling(){
+  mode = 'api';
+  show('view-dashboard');
+  refresh();
+  clearInterval(timer);
+  timer = setInterval(refresh, REFRESH_MS);
+}
+
+/* ─── وضع الـ iframe الاحتياطي ─── */
+function startIframeMode(reason){
+  mode = 'iframe';
+  clearInterval(timer); timer = null;
+  document.getElementById('xc-frame').src = REALTIME_URL;
+  show('view-iframe');
+  if (reason) showToast(reason, 'warning');
+}
+
+/* ─── البداية ─── */
+if (token) startPolling();
+else show('view-connect');
+
+document.addEventListener('visibilitychange', ()=>{
+  if (mode !== 'api') return;
+  if (document.hidden) { clearInterval(timer); timer = null; }
+  else if (token && !timer) { refresh(); timer = setInterval(refresh, REFRESH_MS); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Quality</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ── Star Rating ── */
+.stars-wrap {
+  display: flex; gap: 4px; align-items: center;
+}
+.star {
+  font-size: 20px; cursor: pointer; color: var(--border2);
+  transition: all 0.15s; line-height: 1;
+}
+.star.active { color: var(--gold); }
+.star:hover  { transform: scale(1.2); }
+
+/* ── Question Row ── */
+.q-row {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+.q-row:last-child { border-bottom: none; }
+.q-row:hover { background: rgba(212,175,55,0.02); }
+.q-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: var(--muted);
+  flex-shrink: 0; margin-top: 2px;
+}
+.q-body { flex: 1; min-width: 0; }
+.q-text { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.q-cat  { font-size: 10px; color: var(--muted); margin-bottom: 8px; }
+.q-note-wrap { margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.q-note-input {
+  flex: 1; min-width: 180px; padding: 6px 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 11px;
+  font-family: 'Plus Jakarta Sans', sans-serif; outline: none;
+  transition: border-color 0.2s;
+}
+.q-note-input:focus { border-color: var(--gold); }
+.template-btn {
+  padding: 5px 10px; border-radius: 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); font-size: 10px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.template-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ── Score Display ── */
+.score-circle {
+  width: 100px; height: 100px; border-radius: 50%;
+  border: 4px solid var(--gold);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: rgba(212,175,55,0.06);
+  box-shadow: 0 0 24px rgba(212,175,55,0.15);
+}
+.score-num { font-size: 28px; font-weight: 800; color: var(--gold); line-height: 1; }
+.score-pct { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ── Template Dropdown ── */
+.tmpl-dropdown {
+  position: absolute; top: 100%; right: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  z-index: 100; min-width: 220px;
+  display: none;
+}
+.tmpl-dropdown.open { display: block; }
+.tmpl-item {
+  padding: 8px 10px; border-radius: 7px;
+  font-size: 11px; color: var(--text); cursor: pointer;
+  transition: background 0.15s;
+}
+.tmpl-item:hover { background: rgba(212,175,55,0.08); color: var(--gold); }
+
+/* ── Review Card ── */
+.review-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px; margin-bottom: 10px;
+  transition: all 0.25s; cursor: pointer;
+}
+.review-card:hover {
+  border-color: rgba(212,175,55,0.3);
+  box-shadow: 0 4px 16px rgba(212,175,55,0.08);
+}
+
+/* ── Settings ── */
+.q-setting-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.q-setting-row:last-child { border-bottom: none; }
+.drag-handle { color: var(--muted); cursor: grab; padding: 4px; }
+</style>
+<!-- Quality-only mode styles: hide sidebar when accessed from quality-login -->
+<style id="quality-only-styles" style="display:none"></style>
+</head>
+<body>
+<div class="admin-layout" id="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div id="quality-brand-logo" style="display:none;align-items:center;gap:10px;margin-right:12px;">
+          <img src="../logo.png" style="width:32px;height:32px;object-fit:contain;border-radius:8px;">
+        </div>
+        <div class="page-title">Quality</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Call Quality Management</div>
+      </div>
+      <div class="topbar-right">
+        <select id="month-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadReviews()">
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <select id="year-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadReviews()">
+          <option value="2026">2026</option><option value="2025">2025</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="loadReviews()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+        <button id="quality-logout-btn" onclick="logoutQuality()" title="Sign Out"
+          style="display:none;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
+                 background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);
+                 color:#f87171;font-size:12px;font-weight:700;cursor:pointer;
+                 font-family:inherit;transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(239,68,68,0.18)'"
+          onmouseleave="this.style.background='rgba(239,68,68,0.08)'">
+          <i class="fas fa-sign-out-alt"></i> Sign Out
+        </button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchTab('new',this)">➕ New Review</button>
+        <button class="tab-btn" onclick="switchTab('history',this)">📋 Reviews History</button>
+        <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
+      </div>
+
+      <!-- ══ TAB: NEW REVIEW ══ -->
+      <div id="tab-new">
+        <!-- Info Card -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-info-circle" style="color:var(--gold)"></i> Review Info</div>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Agent <span class="req">*</span></label>
+                <select id="r-agent" class="form-input">
+                  <option value="">Select Agent...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Review Date <span class="req">*</span></label>
+                <input type="date" id="r-date" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Call Number</label>
+                <input type="text" id="r-call" class="form-input" placeholder="e.g. 01XXXXXXXXX">
+              </div>
+              <div class="form-group form-full">
+                <label class="form-label">General Notes</label>
+                <textarea id="r-notes" class="form-input" rows="2" placeholder="Overall feedback..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Score Summary -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-body" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+            <div class="score-circle">
+              <div class="score-num" id="live-score">0</div>
+              <div class="score-pct" id="live-pct">0%</div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">Live Score</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Total: <strong id="live-total" style="color:var(--text);">0</strong> / <span id="live-max">0</span> stars</div>
+              <div style="font-size:12px;color:var(--muted);">Questions answered: <strong id="live-answered" style="color:var(--text);">0</strong> / <span id="live-qcount">0</span></div>
+              <div style="margin-top:12px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
+                <div id="score-bar" style="height:100%;background:var(--primary-gradient);border-radius:3px;width:0%;transition:width 0.4s ease;"></div>
+              </div>
+            </div>
+            <button class="btn btn-success" onclick="submitReview()" id="submit-btn" style="padding:14px 28px;">
+              <i class="fas fa-save"></i> Save Review
+            </button>
+          </div>
+        </div>
+
+        <!-- Questions -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-list-check" style="color:var(--gold)"></i> Questions</div>
+            <div style="font-size:11px;color:var(--muted);">Rate each question from 0 to 5 stars</div>
+          </div>
+          <div id="questions-list">
+            <div class="loading-wrap"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: HISTORY ══ -->
+      <div id="tab-history" style="display:none;">
+        <!-- KPIs -->
+        <div class="kpi-grid fade-up" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
+          <div class="kpi-card gold"><span class="kpi-icon">📋</span><div class="kpi-label">Total Reviews</div><div class="kpi-value" id="h-total">—</div></div>
+          <div class="kpi-card green"><span class="kpi-icon">⭐</span><div class="kpi-label">Avg Score</div><div class="kpi-value" id="h-avg">—</div></div>
+          <div class="kpi-card blue"><span class="kpi-icon">🏆</span><div class="kpi-label">Top Agent</div><div class="kpi-value" id="h-top" style="font-size:14px;">—</div></div>
+          <div class="kpi-card red"><span class="kpi-icon">⚠️</span><div class="kpi-label">Below 70%</div><div class="kpi-value" id="h-below">—</div></div>
+        </div>
+
+        <!-- Filter -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Agent</label>
+                <select id="h-agent" class="form-input" onchange="loadReviews()">
+                  <option value="">All Agents</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reviews List -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-history" style="color:var(--gold)"></i> Reviews</div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th><th>Date</th><th>Call #</th>
+                    <th>Score</th><th>%</th><th>Notes</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="reviews-tbody">
+                  <tr><td colspan="7"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: SETTINGS ══ -->
+      <div id="tab-settings" style="display:none;">
+        <!-- Questions Settings -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-list-check" style="color:var(--gold)"></i> Questions</div>
+            <button class="btn btn-primary btn-sm" onclick="addQuestion()">
+              <i class="fas fa-plus"></i> Add Question
+            </button>
+          </div>
+          <div class="section-body no-pad" id="q-settings-list">
+            <div class="loading-wrap"><div class="spinner"></div></div>
+          </div>
+          <div style="padding:14px 18px;border-top:1px solid var(--border);">
+            <button class="btn btn-success" onclick="saveQuestions()">
+              <i class="fas fa-save"></i> Save Questions
+            </button>
+          </div>
+        </div>
+
+        <!-- Note Templates -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-sticky-note" style="color:var(--gold)"></i> Note Templates</div>
+            <button class="btn btn-primary btn-sm" onclick="addTemplate()">
+              <i class="fas fa-plus"></i> Add Template
+            </button>
+          </div>
+          <div class="section-body" id="templates-list">
+            <div class="loading-wrap"><div class="spinner"></div></div>
+          </div>
+          <div style="padding:14px 18px;border-top:1px solid var(--border);">
+            <button class="btn btn-success" onclick="saveTemplates()">
+              <i class="fas fa-save"></i> Save Templates
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Review Detail Panel -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel" style="width:520px;max-width:95vw;">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Review Details</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+// ── Quality-Only Mode Detection ──────────────────────────────────────────────
+const session = checkQualityAuth();
+
+if (session && session.qualityOnly) {
+  // Hide sidebar entirely — quality manager only sees this page
+  document.getElementById('sidebar').style.display = 'none';
+  document.getElementById('admin-layout').style.gridTemplateColumns = '1fr';
+  document.getElementById('quality-brand-logo').style.display = 'flex';
+
+  // Show logout button
+  document.getElementById('quality-logout-btn').style.display = 'flex';
+} else {
+  // Full admin: render normal sidebar
+  renderSidebar();
+}
+
+applyThemeIcon();
+
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const now = new Date();
+document.getElementById('month-filter').value = String(now.getMonth()+1).padStart(2,'0');
+document.getElementById('r-date').value = now.toISOString().split('T')[0];
+
+const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+
+let allAgents    = [];
+let questions    = [];
+let templates    = [];
+let answers      = {}; // { questionId: stars }
+let reviews      = [];
+let currentTab   = 'new';
+
+// ── INIT ──
+async function init() {
+  const [agentsRes, questionsRes, templatesRes] = await Promise.all([
+    db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+    db.from('quality_questions').select('*').eq('is_active',true).order('order_num'),
+    db.from('quality_note_templates').select('*').order('created_at'),
+  ]);
+
+  allAgents = agentsRes.data  || [];
+  questions = questionsRes.data || [];
+  templates = templatesRes.data || [];
+
+  // Populate agent selects
+  ['r-agent','h-agent'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (id === 'h-agent') sel.innerHTML = '<option value="">All Agents</option>';
+    allAgents.forEach(a => {
+      const opt = new Option(a.formal_name, a.id);
+      sel.add(opt.cloneNode(true));
+    });
+  });
+
+  renderQuestions();
+  renderQSettings();
+  renderTemplatesList();
+  updateScore();
+}
+
+// ── SWITCH TAB ──
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['new','history','settings'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none';
+  });
+  if (tab === 'history') loadReviews();
+  if (tab === 'settings') { renderQSettings(); renderTemplatesList(); }
+}
+
+// ── RENDER QUESTIONS ──
+function renderQuestions() {
+  const container = document.getElementById('questions-list');
+  if (!questions.length) {
+    container.innerHTML = '<div class="empty-state">No questions found. Add them in Settings.</div>';
+    return;
+  }
+
+  container.innerHTML = questions.map((q, i) => `
+    <div class="q-row">
+      <div class="q-num">${i+1}</div>
+      <div class="q-body">
+        ${q.category ? `<div class="q-cat"><i class="fas fa-tag" style="margin-left:4px;color:var(--gold);font-size:9px;"></i>${q.category}</div>` : ''}
+        <div class="q-text">${q.question}</div>
+        <div class="stars-wrap" id="stars-${q.id}">
+          ${[0,1,2,3,4,5].map(s => `
+            <span class="star ${(answers[q.id]||0)>=s&&s>0?'active':''}"
+              data-qid="${q.id}" data-val="${s}"
+              onclick="setStars('${q.id}',${s})"
+              onmouseover="hoverStars('${q.id}',${s})"
+              onmouseleave="unhoverStars('${q.id}')">
+              ${s===0?'<i class="fas fa-ban" style="font-size:14px;color:var(--muted);"></i>':'★'}
+            </span>`).join('')}
+          <span style="font-size:11px;color:var(--muted);margin-right:8px;" id="star-val-${q.id}">${answers[q.id]||0}/5</span>
+        </div>
+        <div class="q-note-wrap">
+          <input class="q-note-input" type="text" placeholder="Add note..." id="note-${q.id}">
+          <div style="position:relative;">
+            <button class="template-btn" onclick="toggleTmpl('tmpl-${q.id}')">
+              <i class="fas fa-chevron-down" style="margin-left:4px;font-size:9px;"></i> Templates
+            </button>
+            <div class="tmpl-dropdown" id="tmpl-${q.id}">
+              ${templates.map(t => `<div class="tmpl-item" onclick="applyTemplate('${q.id}','${t.text.replace(/'/g,"\\'")}')">
+                ${t.text}
+              </div>`).join('')}
+              ${!templates.length ? '<div style="padding:8px;font-size:11px;color:var(--muted);">No templates yet</div>' : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`).join('');
+
+  updateScore();
+}
+
+// ── STARS ──
+function setStars(qid, val) {
+  answers[qid] = val;
+  updateStarDisplay(qid);
+  updateScore();
+}
+
+function hoverStars(qid, val) {
+  const wrap = document.getElementById('stars-'+qid);
+  if (!wrap) return;
+  wrap.querySelectorAll('.star').forEach(s => {
+    const sv = parseInt(s.dataset.val);
+    if (sv > 0) s.style.color = sv <= val ? '#D4AF37' : 'var(--border2)';
+  });
+}
+
+function unhoverStars(qid) {
+  updateStarDisplay(qid);
+}
+
+function updateStarDisplay(qid) {
+  const val  = answers[qid] || 0;
+  const wrap = document.getElementById('stars-'+qid);
+  if (!wrap) return;
+  wrap.querySelectorAll('.star').forEach(s => {
+    const sv = parseInt(s.dataset.val);
+    if (sv > 0) {
+      s.style.color = sv <= val ? '#D4AF37' : '';
+      s.classList.toggle('active', sv <= val);
+    }
+  });
+  const valEl = document.getElementById('star-val-'+qid);
+  if (valEl) valEl.innerText = val + '/5';
+}
+
+// ── SCORE ──
+function updateScore() {
+  const total    = Object.values(answers).reduce((s,v) => s+v, 0);
+  const maxScore = questions.length * 5;
+  const answered = Object.keys(answers).filter(k => answers[k] > 0).length;
+  const pct      = maxScore > 0 ? Math.round((total/maxScore)*100) : 0;
+
+  document.getElementById('live-score').innerText    = total;
+  document.getElementById('live-pct').innerText      = pct + '%';
+  document.getElementById('live-total').innerText    = total;
+  document.getElementById('live-max').innerText      = maxScore;
+  document.getElementById('live-answered').innerText = answered;
+  document.getElementById('live-qcount').innerText   = questions.length;
+  document.getElementById('score-bar').style.width   = pct + '%';
+
+  // Color
+  const circle = document.querySelector('.score-circle');
+  const color   = pct>=80?'#10B981':pct>=60?'#F59E0B':'#EF4444';
+  circle.style.borderColor = color;
+  document.getElementById('live-score').style.color = color;
+}
+
+// ── TEMPLATE ──
+function toggleTmpl(id) {
+  document.querySelectorAll('.tmpl-dropdown').forEach(d => {
+    if (d.id !== id) d.classList.remove('open');
+  });
+  document.getElementById(id).classList.toggle('open');
+}
+
+function applyTemplate(qid, text) {
+  document.getElementById('note-'+qid).value = text;
+  document.getElementById('tmpl-'+qid).classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.template-btn') && !e.target.closest('.tmpl-dropdown')) {
+    document.querySelectorAll('.tmpl-dropdown').forEach(d => d.classList.remove('open'));
+  }
+});
+
+// ── SUBMIT REVIEW ──
+async function submitReview() {
+  const agentId = document.getElementById('r-agent').value;
+  const date    = document.getElementById('r-date').value;
+  if (!agentId || !date) { showToast('Please select Agent and Date','error'); return; }
+
+  const agent   = allAgents.find(a => a.id === agentId);
+  const month   = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year    = parseInt(document.getElementById('year-filter').value);
+
+  const total    = Object.values(answers).reduce((s,v) => s+v, 0);
+  const maxScore = questions.length * 5;
+  const pct      = maxScore > 0 ? parseFloat(((total/maxScore)*100).toFixed(1)) : 0;
+
+  // Build answers object with notes
+  const answersData = {};
+  questions.forEach(q => {
+    answersData[q.id] = {
+      question: q.question,
+      category: q.category,
+      stars:    answers[q.id] || 0,
+      note:     document.getElementById('note-'+q.id)?.value || '',
+    };
+  });
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+  try {
+    const { error } = await db.from('quality_reviews').insert({
+      agent_id:    agentId,
+      agent_name:  agent.formal_name,
+      call_number: document.getElementById('r-call').value.trim(),
+      review_date: date,
+      month, year,
+      total_score: total,
+      percentage:  pct,
+      answers:     answersData,
+      notes:       document.getElementById('r-notes').value.trim(),
+      created_by:  session?.username || 'Admin',
+      created_at:  new Date().toISOString(),
+      updated_at:  new Date().toISOString(),
+    });
+    if (error) throw error;
+
+    // Update quality_scores for KPI page
+    await updateQualityScore(agentId, agent.formal_name, month, year, pct);
+
+    showToast('Review saved! Score: ' + pct + '%', 'success');
+    // Reset
+    answers = {};
+    renderQuestions();
+    document.getElementById('r-call').value  = '';
+    document.getElementById('r-notes').value = '';
+
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Review';
+  }
+}
+
+async function updateQualityScore(agentId, agentName, month, year, pct) {
+  // get all the reviews and in month  andcalculate and
+  const { data } = await db.from('quality_reviews')
+    .select('percentage')
+    .eq('agent_id', agentId)
+    .eq('month', month)
+    .eq('year', year);
+
+  const avgPct = data && data.length
+    ? parseFloat((data.reduce((s,r) => s + parseFloat(r.percentage||0), 0) / data.length).toFixed(1))
+    : pct;
+
+  const existing = await db.from('quality_scores')
+    .select('id')
+    .eq('agent_id', agentId)
+    .eq('month', month)
+    .eq('year', year)
+    .single();
+
+  const payload = {
+    agent_id:   agentId,
+    agent_name: agentName,
+    month, year,
+    score:      avgPct + '%',
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existing.data?.id) {
+    await db.from('quality_scores').update(payload).eq('id', existing.data.id);
+  } else {
+    await db.from('quality_scores').insert({ ...payload, created_at: new Date().toISOString() });
+  }
+}
+
+// ── LOAD REVIEWS ──
+async function loadReviews() {
+  const month  = document.getElementById('month-filter').value;
+  const year   = parseInt(document.getElementById('year-filter').value);
+  const agentF = document.getElementById('h-agent')?.value || '';
+  const tbody  = document.getElementById('reviews-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="7"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+
+  const monthName = MONTH_NAMES[parseInt(month)];
+
+  // get from both
+  let [reviewsRes, scoresRes] = await Promise.all([
+    db.from('quality_reviews').select('*')
+      .eq('month', monthName).eq('year', year)
+      .order('review_date', { ascending: false }),
+    db.from('quality_scores').select('*')
+      .eq('month', monthName).eq('year', year),
+  ]);
+
+  let reviewsData = reviewsRes.data || [];
+  let scoresData  = scoresRes.data  || [];
+
+  // filter by agent
+  if (agentF) {
+    reviewsData = reviewsData.filter(r => r.agent_id === agentF);
+    scoresData  = scoresData.filter(s => s.agent_id === agentF);
+  }
+
+  // handle scores in same format as reviews
+  const scoresAsRows = scoresData
+    .filter(s => !reviewsData.find(r => r.agent_id === s.agent_id))
+    .map(s => ({
+      id:          s.id,
+      agent_id:    s.agent_id,
+      agent_name:  s.agent_name,
+      review_date: null,
+      call_number: null,
+      total_score: null,
+      percentage:  s.score,
+      notes:       'Imported score',
+      answers:     null,
+      _isScore:    true,
+    }));
+
+  const allRows = [...reviewsData, ...scoresAsRows];
+  reviews = allRows;
+
+  // KPIs
+  document.getElementById('h-total').innerText = allRows.length;
+  if (allRows.length) {
+    const avg = allRows.reduce((s,r) => s + parseFloat(r.percentage||0), 0) / allRows.length;
+    document.getElementById('h-avg').innerText = avg.toFixed(1) + '%';
+
+    const agentMap = {};
+    allRows.forEach(r => {
+      if (!agentMap[r.agent_name]) agentMap[r.agent_name] = [];
+      agentMap[r.agent_name].push(parseFloat(r.percentage||0));
+    });
+    const topAgent = Object.entries(agentMap)
+      .map(([name, scores]) => ({ name, avg: scores.reduce((s,v)=>s+v,0)/scores.length }))
+      .sort((a,b) => b.avg - a.avg)[0];
+    document.getElementById('h-top').innerText   = topAgent ? topAgent.name.split(' ')[0] : '—';
+    document.getElementById('h-below').innerText = allRows.filter(r => parseFloat(r.percentage||0) < 70).length;
+  } else {
+    ['h-avg','h-top','h-below'].forEach(id => document.getElementById(id).innerText = '—');
+  }
+
+  if (!allRows.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">📭</span>No reviews found</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = allRows.map(r => {
+    const pct      = parseFloat(r.percentage||0);
+    const pctColor = pct>=80?'#10B981':pct>=60?'#F59E0B':'#EF4444';
+    return '<tr>' +
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">' + initials(r.agent_name) + '</div><span style="font-weight:700;">' + r.agent_name + '</span></div></td>' +
+      '<td style="color:var(--gold);font-weight:700;">' + (r.review_date ? formatDate(r.review_date) : '<span style="color:var(--muted);font-size:11px;">Imported</span>') + '</td>' +
+      '<td style="font-family:monospace;font-size:11px;">' + (r.call_number||'—') + '</td>' +
+      '<td style="font-weight:800;">' + (r.total_score ? r.total_score+' pts' : '—') + '</td>' +
+      '<td style="font-weight:800;color:' + pctColor + ';">' + pct + '%</td>' +
+      '<td style="font-size:11px;color:var(--muted);">' + (r.notes||'—') + '</td>' +
+      '<td><div style="display:flex;gap:6px;">' +
+        (!r._isScore ? '<button class="btn btn-info btn-sm btn-icon" onclick="viewReview(\'' + r.id + '\')" title="View"><i class="fas fa-eye"></i></button>' : '') +
+        '<button class="btn btn-danger btn-sm btn-icon" onclick="deleteReview(\'' + r.id + '\',\'' + (r._isScore?'score':'review') + '\')" title="Delete"><i class="fas fa-trash"></i></button>' +
+      '</div></td>' +
+      '</tr>';
+  }).join('');
+}
+  
+// ── VIEW REVIEW ──
+function viewReview(id) {
+  const r = reviews.find(x => x.id === id);
+  if (!r) return;
+
+  const answers = r.answers || {};
+  const pct     = parseFloat(r.percentage||0);
+  const color   = pct>=80?'#10B981':pct>=60?'#F59E0B':'#EF4444';
+
+  document.getElementById('panel-title').innerText = r.agent_name + ' — ' + formatDate(r.review_date);
+  document.getElementById('panel-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:16px;background:var(--surface2);border-radius:12px;">
+      <div class="score-circle" style="width:80px;height:80px;border-color:${color};">
+        <div class="score-num" style="font-size:22px;color:${color};">${r.total_score}</div>
+        <div class="score-pct">${pct}%</div>
+      </div>
+      <div>
+        <div style="font-weight:800;font-size:15px;color:var(--text);">${r.agent_name}</div>
+        <div style="font-size:12px;color:var(--muted);">${formatDate(r.review_date)} ${r.call_number?'· '+r.call_number:''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">By: ${r.created_by||'Admin'}</div>
+      </div>
+    </div>
+    ${r.notes ? `<div style="padding:12px;background:rgba(212,175,55,0.06);border:1px solid rgba(212,175,55,0.15);border-radius:10px;font-size:12px;color:var(--muted);margin-bottom:14px;"><i class="fas fa-sticky-note" style="color:var(--gold);margin-left:6px;"></i>${r.notes}</div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:0;">
+      ${Object.entries(answers).map(([qid, a], i) => `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border);${i===Object.keys(answers).length-1?'border-bottom:none;':''}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text);flex:1;">${a.question}</div>
+            <div style="display:flex;gap:2px;flex-shrink:0;">
+              ${[1,2,3,4,5].map(s => `<span style="color:${s<=a.stars?'#D4AF37':'var(--border2)'}; font-size:14px;">★</span>`).join('')}
+              <span style="font-size:10px;color:var(--muted);margin-right:4px;">${a.stars}/5</span>
+            </div>
+          </div>
+          ${a.note ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;"><i class="fas fa-comment" style="margin-left:4px;font-size:9px;"></i>${a.note}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
+
+  document.getElementById('panel-footer').innerHTML = '<button class="btn btn-ghost" onclick="closePanel()">Close</button>';
+  openPanel();
+}
+
+// ── DELETE REVIEW ──
+async function deleteReview(id, type) {
+  openModal('Delete', 'Delete this entry?', async () => {
+    if (type === 'score') {
+      await db.from('quality_scores').delete().eq('id', id);
+    } else {
+      await db.from('quality_reviews').delete().eq('id', id);
+    }
+    showToast('Deleted!', 'warning');
+    loadReviews();
+  });
+}
+// ── SETTINGS: QUESTIONS ──
+function renderQSettings() {
+  const container = document.getElementById('q-settings-list');
+  container.innerHTML = '<div style="padding:16px;display:flex;flex-direction:column;gap:0;">' +
+    questions.map((q, i) => `
+      <div class="q-setting-row" data-id="${q.id}">
+        <span class="drag-handle"><i class="fas fa-grip-vertical"></i></span>
+        <input type="text" class="form-input" value="${q.question}" style="flex:2;" placeholder="Question..." data-field="question">
+        <input type="text" class="form-input" value="${q.category||''}" style="flex:1;" placeholder="Category..." data-field="category">
+        <button class="btn btn-danger btn-sm btn-icon" onclick="removeQuestion('${q.id}',this)">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>`).join('') +
+    '</div>';
+}
+
+function addQuestion() {
+  const container = document.getElementById('q-settings-list').querySelector('div');
+  const div = document.createElement('div');
+  div.className = 'q-setting-row';
+  div.dataset.id = 'new_' + Date.now();
+  div.innerHTML = `
+    <span class="drag-handle"><i class="fas fa-grip-vertical"></i></span>
+    <input type="text" class="form-input" style="flex:2;" placeholder="Question..." data-field="question">
+    <input type="text" class="form-input" style="flex:1;" placeholder="Category..." data-field="category">
+    <button class="btn btn-danger btn-sm btn-icon" onclick="this.closest('.q-setting-row').remove()">
+      <i class="fas fa-times"></i>
+    </button>`;
+  container.appendChild(div);
+}
+
+function removeQuestion(id, btn) {
+  btn.closest('.q-setting-row').remove();
+}
+
+async function saveQuestions() {
+  const rows = document.querySelectorAll('#q-settings-list .q-setting-row');
+  const toUpsert = [];
+  const toInsert = [];
+
+  rows.forEach((row, i) => {
+    const question = row.querySelector('[data-field="question"]').value.trim();
+    const category = row.querySelector('[data-field="category"]').value.trim();
+    if (!question) return;
+
+    if (row.dataset.id.startsWith('new_')) {
+      toInsert.push({ question, category, order_num: i+1, is_active: true });
+    } else {
+      toUpsert.push({ id: row.dataset.id, question, category, order_num: i+1, is_active: true, updated_at: new Date().toISOString() });
+    }
+  });
+
+  try {
+    if (toUpsert.length) await db.from('quality_questions').upsert(toUpsert);
+    if (toInsert.length) await db.from('quality_questions').insert(toInsert);
+
+    // Reload
+    const { data } = await db.from('quality_questions').select('*').eq('is_active',true).order('order_num');
+    questions = data || [];
+    renderQSettings();
+    renderQuestions();
+    showToast('Questions saved!', 'success');
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+// ── SETTINGS: TEMPLATES ──
+function renderTemplatesList() {
+  const container = document.getElementById('templates-list');
+  container.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
+    templates.map(t => `
+      <div style="display:flex;gap:8px;align-items:center;" data-id="${t.id}">
+        <input type="text" class="form-input" value="${t.text}" style="flex:1;">
+        <button class="btn btn-danger btn-sm btn-icon" onclick="this.closest('[data-id]').remove()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>`).join('') +
+    '</div>';
+}
+
+function addTemplate() {
+  const container = document.getElementById('templates-list').querySelector('div');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:8px;';
+  div.dataset.id = 'new_' + Date.now();
+  div.innerHTML = `
+    <input type="text" class="form-input" style="flex:1;" placeholder="Note template text...">
+    <button class="btn btn-danger btn-sm btn-icon" onclick="this.closest('[data-id]').remove()">
+      <i class="fas fa-times"></i>
+    </button>`;
+  container.appendChild(div);
+}
+
+async function saveTemplates() {
+  const rows = document.querySelectorAll('#templates-list [data-id]');
+  const toUpsert = [], toInsert = [];
+
+  rows.forEach(row => {
+    const text = row.querySelector('input').value.trim();
+    if (!text) return;
+    if (row.dataset.id.startsWith('new_')) toInsert.push({ text });
+    else toUpsert.push({ id: row.dataset.id, text });
+  });
+
+  try {
+    if (toUpsert.length) await db.from('quality_note_templates').upsert(toUpsert);
+    if (toInsert.length) await db.from('quality_note_templates').insert(toInsert);
+
+    const { data } = await db.from('quality_note_templates').select('*').order('created_at');
+    templates = data || [];
+    renderTemplatesList();
+    renderQuestions();
+    showToast('Templates saved!', 'success');
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+// ── HELPERS ──
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+function openModal(title, msg, onConfirm) {
+  document.getElementById('modal-title').innerText = title;
+  document.getElementById('modal-msg').innerText   = msg;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick = () => { closeModal(); onConfirm(); };
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function openPanel()  { document.getElementById('panel-overlay').classList.add('open'); document.getElementById('slide-panel').classList.add('open'); }
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); document.getElementById('slide-panel').classList.remove('open'); }
+
+init();
+</script>
+</body>
+</html>

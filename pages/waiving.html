@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Waiving</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.dev-type-late    { color:#F59E0B; font-weight:700; }
+.dev-type-early   { color:#EF4444; font-weight:700; }
+.dev-type-long    { color:#8B5CF6; font-weight:700; }
+.dev-type-missed  { color:#DC2626; font-weight:700; }
+.dev-type-extra   { color:#3B82F6; font-weight:700; }
+.dev-type-outage  { color:#F97316; font-weight:700; }
+.dev-type-system  { color:#06B6D4; font-weight:700; }
+
+.reason-cell {
+  max-width: 260px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.waiver-pill {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:3px 10px; border-radius:20px;
+  background:rgba(59,130,246,0.12); color:var(--gold);
+  border:1px solid rgba(59,130,246,0.2);
+  font-size:11px; font-weight:700;
+}
+
+.min-pill {
+  display:inline-block; padding:3px 9px; border-radius:20px;
+  font-size:11px; font-weight:800; font-family:'IBM Plex Mono',monospace;
+  background:rgba(16,185,129,0.12); color:#10B981; border:1px solid rgba(16,185,129,0.2);
+}
+
+/* ── TABS ── moved to main.css shared .tabs class */
+
+/* ── MANUAL WAIVE FORM ── */
+.manual-waive-card {
+  background:rgba(16,185,129,0.04);
+  border:1px solid rgba(16,185,129,0.18);
+  border-radius:16px;
+  padding:28px;
+  max-width:680px;
+  margin:0 auto;
+}
+.manual-waive-card .form-label {
+  font-size:12px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; display:block;
+}
+.manual-waive-card .form-input {
+  width:100%; padding:10px 14px; border-radius:10px;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+  color:var(--text); font-size:13px; outline:none; transition:border .2s;
+}
+.manual-waive-card .form-input:focus { border-color:var(--gold); }
+.dur-row {
+  display:grid; grid-template-columns:1fr 1fr; gap:14px;
+}
+.submit-row {
+  display:flex; justify-content:flex-end; margin-top:22px;
+}
+.btn-waive {
+  padding:11px 32px; border-radius:10px; border:none; cursor:pointer;
+  background:var(--gold); color:#000; font-size:13px; font-weight:700;
+  display:flex; align-items:center; gap:8px; transition:opacity .2s;
+}
+.btn-waive:hover { opacity:.85; }
+.btn-waive:disabled { opacity:.5; cursor:not-allowed; }
+
+.preview-pill {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 12px; border-radius:20px;
+  background:rgba(212,175,55,0.12); color:var(--gold);
+  border:1px solid rgba(212,175,55,0.25);
+  font-size:12px; font-weight:700; font-family:'IBM Plex Mono',monospace;
+}
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <!-- ── TOP BAR ── -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Waiving</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Forgiven Deviations History
+        </div>
+      </div>
+      <div class="topbar-right">
+        <a href="adherence.html" class="btn btn-ghost btn-sm">
+          <i class="fas fa-arrow-left"></i> Back to Adherence
+        </a>
+        <button class="btn btn-ghost btn-sm" onclick="refreshCurrentTab()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── TABS ── -->
+      <div class="tabs fade-up">
+        <button class="tab-btn active" id="tab-history-btn" onclick="switchTab('history')">
+          <i class="fas fa-history"></i> Waive History
+        </button>
+        <button class="tab-btn" id="tab-manual-btn" onclick="switchTab('manual')">
+          <i class="fas fa-hand-holding-heart"></i> Manual Waive
+        </button>
+        <button class="tab-btn" id="tab-bulk-btn" onclick="switchTab('bulk'); initBulkWaive();">
+          <i class="fas fa-layer-group"></i> Bulk Waive
+        </button>
+        <button class="tab-btn" id="tab-breakdown-btn" onclick="switchTab('breakdown'); loadBreakdown();">
+          <i class="fas fa-calculator"></i> Net Missing Breakdown
+        </button>
+      </div>
+
+      <!-- ══════════════════ TAB: HISTORY ══════════════════ -->
+      <div class="tab-panel active" id="tab-history">
+
+        <!-- ── INFO BANNER ── -->
+        <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:14px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;" class="fade-up">
+          <i class="fas fa-hand-holding-heart" style="color:#10B981;font-size:20px;flex-shrink:0;"></i>
+          <div style="font-size:13px;color:var(--muted);">
+            This page lists all <strong style="color:var(--text);">waived deviations</strong> — situations where time issues were forgiven.
+            You can <strong style="color:var(--text);">unwaive</strong> a record to move it back to the active deviations log.
+          </div>
+        </div>
+
+        <!-- ── FILTERS ── -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-filter" style="color:var(--gold)"></i> Filters
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="resetFilters()">
+              <i class="fas fa-undo"></i> Reset
+            </button>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Date Range</label>
+                <select id="filter-range" class="form-input" onchange="onRangeChange()">
+                  <option value="mtd" selected>Month to Date</option>
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="last7">Last 7 Days</option>
+                  <option value="last30">Last 30 Days</option>
+                  <option value="all">All Time</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+              <div class="form-group" id="custom-from-wrap" style="display:none;">
+                <label class="form-label">From</label>
+                <input type="date" id="filter-from" class="form-input" onchange="loadData()">
+              </div>
+              <div class="form-group" id="custom-to-wrap" style="display:none;">
+                <label class="form-label">To</label>
+                <input type="date" id="filter-to" class="form-input" onchange="loadData()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agent</label>
+                <select id="filter-agent" class="form-input" onchange="loadData()">
+                  <option value="">All Agents</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Deviation Type</label>
+                <select id="filter-type" class="form-input" onchange="loadData()">
+                  <option value="">All Types</option>
+                  <option value="Late Login">Late Login</option>
+                  <option value="Early Logout">Early Logout</option>
+                  <option value="Long Break">Long Break</option>
+                  <option value="Missed Shift">Missed Shift</option>
+                  <option value="Extra Break">Extra Break</option>
+                  <option value="Outage">Outage</option>
+                  <option value="System Issue">System Issue</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Waived By</label>
+                <select id="filter-waiver" class="form-input" onchange="loadData()">
+                  <option value="">All Admins</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── KPI CARDS ── -->
+        <div class="kpi-grid fade-up" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+          <div class="kpi-card green">
+            <span class="kpi-icon">✅</span>
+            <div class="kpi-label">Total Waived</div>
+            <div class="kpi-value" id="kpi-total">—</div>
+            <div class="kpi-sub">In selected range</div>
+          </div>
+          <div class="kpi-card blue">
+            <span class="kpi-icon">⏱️</span>
+            <div class="kpi-label">Time Forgiven</div>
+            <div class="kpi-value" id="kpi-mins">—</div>
+            <div class="kpi-sub">Total minutes</div>
+          </div>
+          <div class="kpi-card purple">
+            <span class="kpi-icon">👥</span>
+            <div class="kpi-label">Agents Helped</div>
+            <div class="kpi-value" id="kpi-agents">—</div>
+            <div class="kpi-sub">Unique agents</div>
+          </div>
+          <div class="kpi-card gold">
+            <span class="kpi-icon">🏅</span>
+            <div class="kpi-label">Top Recipient</div>
+            <div class="kpi-value" id="kpi-top" style="font-size:15px;">—</div>
+            <div class="kpi-sub" id="kpi-top-sub"></div>
+          </div>
+        </div>
+
+        <!-- ── WAIVED TABLE ── -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-history" style="color:var(--gold)"></i>
+              Waive History
+            </div>
+            <span id="row-count" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Agent</th>
+                    <th>Type</th>
+                    <th>Saved Time</th>
+                    <th>Reason</th>
+                    <th>Waived By</th>
+                    <th>Waived At</th>
+                    <th style="text-align:center;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="waive-tbody">
+                  <tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tab-history -->
+
+      <!-- ══════════════════ TAB: MANUAL WAIVE ══════════════════ -->
+      <div class="tab-panel" id="tab-manual">
+
+        <div style="background:rgba(212,175,55,0.06);border:1px solid rgba(212,175,55,0.2);border-radius:14px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:12px;" class="fade-up">
+          <i class="fas fa-pen-to-square" style="color:var(--gold);font-size:20px;flex-shrink:0;"></i>
+          <div style="font-size:13px;color:var(--muted);">
+            Use this form to <strong style="color:var(--text);">manually waive</strong> time for any agent on any date — without needing an existing deviation record. A new waived entry will be created directly.
+          </div>
+        </div>
+
+        <div class="manual-waive-card fade-up">
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-hand-holding-heart" style="color:#10B981;"></i>
+            New Manual Waive
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <div>
+              <label class="form-label">Agent <span style="color:#EF4444;">*</span></label>
+              <select id="mw-agent" class="form-input" onchange="updatePreview()">
+                <option value="">— Select Agent —</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Date <span style="color:#EF4444;">*</span></label>
+              <input type="date" id="mw-date" class="form-input" onchange="updatePreview()">
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="form-label">Deviation Type <span style="color:#EF4444;">*</span></label>
+            <select id="mw-type" class="form-input" onchange="updatePreview()">
+              <option value="">— Select Type —</option>
+              <option value="Late Login">⏰ Late Login</option>
+              <option value="Early Logout">🚪 Early Logout</option>
+              <option value="Long Break">☕ Long Break</option>
+              <option value="Missed Shift">❌ Missed Shift</option>
+              <option value="Extra Break">➕ Extra Break</option>
+              <option value="Outage">⚡ Outage</option>
+              <option value="System Issue">🖥️ System Issue</option>
+            </select>
+          </div>
+
+          <div class="dur-row" style="margin-bottom:16px;">
+            <div>
+              <label class="form-label">Hours</label>
+              <input type="number" id="mw-hours" class="form-input" min="0" max="23" placeholder="0"
+                     oninput="updatePreview()">
+            </div>
+            <div>
+              <label class="form-label">Minutes <span style="color:#EF4444;">*</span></label>
+              <input type="number" id="mw-minutes" class="form-input" min="0" max="59" placeholder="e.g. 15"
+                     oninput="updatePreview()">
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="form-label">Reason / Note</label>
+            <textarea id="mw-reason" class="form-input" rows="3"
+              style="resize:vertical;font-family:inherit;"
+              placeholder="e.g. Approved by TL, technical issue..."></textarea>
+          </div>
+
+          <!-- Preview -->
+          <div id="mw-preview" style="display:none;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 16px;margin-bottom:4px;font-size:12px;color:var(--muted);line-height:1.8;">
+          </div>
+
+          <div class="submit-row">
+            <button class="btn-waive" id="mw-submit-btn" onclick="submitManualWaive()" disabled>
+              <i class="fas fa-check-circle"></i> Save Waive
+            </button>
+          </div>
+        </div>
+
+      </div><!-- /tab-manual -->
+
+      <!-- ══════════════════ TAB: BULK WAIVE ══════════════════ -->
+      <div class="tab-panel" id="tab-bulk">
+
+        <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:14px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:12px;" class="fade-up">
+          <i class="fas fa-exclamation-triangle" style="color:#EF4444;font-size:20px;flex-shrink:0;"></i>
+          <div style="font-size:13px;color:var(--muted);">
+            <strong style="color:var(--text);">Bulk Waive</strong> — Waives all non-pending deviations for the selected date at once. Use it for cases like power outages or server issues.
+          </div>
+        </div>
+
+        <div class="manual-waive-card fade-up">
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-layer-group" style="color:#EF4444;"></i>
+            Bulk Waive by Date
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <div>
+              <label class="form-label">Date <span style="color:#EF4444;">*</span></label>
+              <input type="date" id="bw-date" class="form-input" oninput="bwClearPreview()">
+            </div>
+            <div>
+              <label class="form-label">Deviation Type <span style="color:var(--muted);font-weight:400;">(Optional — all types if empty)</span></label>
+              <select id="bw-type" class="form-input" onchange="bwClearPreview()">
+                <option value="">— All Types —</option>
+                <option value="Late Login">⏰ Late Login</option>
+                <option value="Early Logout">🚪 Early Logout</option>
+                <option value="Long Break">☕ Long Break</option>
+                <option value="Missed Shift">❌ Missed Shift</option>
+                <option value="Extra Break">➕ Extra Break</option>
+                <option value="Outage">⚡ Outage</option>
+                <option value="System Issue">🖥️ System Issue</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="form-label">Reason <span style="color:#EF4444;">*</span></label>
+            <textarea id="bw-reason" class="form-input" rows="2"
+              style="resize:vertical;font-family:inherit;"
+              placeholder="e.g. Internet outage, system down, approved by management…"></textarea>
+          </div>
+
+          <div style="display:flex;gap:12px;margin-bottom:20px;">
+            <button class="btn btn-ghost" onclick="bwPreview()" id="bw-preview-btn">
+              <i class="fas fa-search"></i> Preview Affected
+            </button>
+          </div>
+
+          <!-- Preview Table -->
+          <div id="bw-preview-area" style="display:none;margin-bottom:20px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">
+              <span id="bw-count-label"></span>
+            </div>
+            <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                  <tr style="background:var(--surface-2,rgba(255,255,255,0.04));">
+                    <th style="padding:8px 12px;text-align:left;color:var(--muted);">Agent</th>
+                    <th style="padding:8px 12px;text-align:left;color:var(--muted);">Type</th>
+                    <th style="padding:8px 12px;text-align:left;color:var(--muted);">Minutes</th>
+                  </tr>
+                </thead>
+                <tbody id="bw-preview-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="bw-empty-msg" style="display:none;padding:20px;text-align:center;color:var(--muted);font-size:13px;">
+            <i class="fas fa-check-circle" style="color:#10B981;margin-bottom:8px;font-size:20px;display:block;"></i>
+            No non-pending deviations for this date.
+          </div>
+
+          <div class="submit-row">
+            <button class="btn-waive" id="bw-submit-btn" onclick="bwSubmit()" disabled
+              style="background:linear-gradient(135deg,#EF4444,#B91C1C);">
+              <i class="fas fa-layer-group"></i> Waive All
+            </button>
+          </div>
+        </div>
+
+      </div><!-- /tab-bulk -->
+
+      <!-- ══════════════════ TAB: NET MISSING BREAKDOWN ══════════════════ -->
+      <div class="tab-panel" id="tab-breakdown">
+
+        <!-- INFO BANNER -->
+        <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:14px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;" class="fade-up">
+          <i class="fas fa-calculator" style="color:#F59E0B;font-size:20px;flex-shrink:0;"></i>
+          <div style="font-size:13px;color:var(--muted);">
+            This tab shows the <strong style="color:var(--text);">Net Missing calculation breakdown</strong> per agent —
+            Formula: <strong style="color:#F59E0B;">Net Missing = (Total Missing − Extra Time) − Waived</strong>.
+            If the result is ≤ 5 minutes, the agent shows as <strong style="color:#10B981;">Full Time</strong>.
+          </div>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-filter" style="color:var(--gold)"></i> Filters</div>
+          </div>
+          <div class="section-body">
+            <div class="filter-row">
+              <div class="form-group">
+                <label class="form-label">Month</label>
+                <select id="bd-month" class="form-input" onchange="loadBreakdown()">
+                  <option value="01">January</option><option value="02">February</option>
+                  <option value="03">March</option><option value="04">April</option>
+                  <option value="05">May</option><option value="06">June</option>
+                  <option value="07">July</option><option value="08">August</option>
+                  <option value="09">September</option><option value="10">October</option>
+                  <option value="11">November</option><option value="12">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Year</label>
+                <select id="bd-year" class="form-input" onchange="loadBreakdown()">
+                  <!-- populated dynamically -->
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agent</label>
+                <select id="bd-agent" class="form-input" onchange="loadBreakdown()">
+                  <option value="">All Agents</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-table" style="color:var(--gold)"></i> Breakdown per Agent</div>
+            <span id="bd-row-count" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th style="text-align:center;">Total Missing</th>
+                    <th style="text-align:center;">Extra Time</th>
+                    <th style="text-align:center;">After Extra</th>
+                    <th style="text-align:center;">Waived</th>
+                    <th style="text-align:center;">Net Missing</th>
+                    <th style="text-align:center;">Result</th>
+                    <th style="text-align:center;">Why Full Time?</th>
+                  </tr>
+                </thead>
+                <tbody id="bd-tbody">
+                  <tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tab-breakdown -->
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ UNWAIVE CONFIRM ═══════════ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+let allAgents = [];
+let currentData = [];
+
+// ── TAB SWITCH ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('tab-' + name + '-btn').classList.add('active');
+}
+
+// ── INIT ──
+async function init() {
+  const [agentsRes, waiversRes] = await Promise.all([
+    db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+    db.from('adherence_deviations').select('waived_by').eq('is_waived', true)
+  ]);
+  allAgents = agentsRes.data || [];
+
+  // Populate agents — history filter
+  const agentSel = document.getElementById('filter-agent');
+  allAgents.forEach(a => agentSel.add(new Option(a.formal_name, a.id)));
+
+  // Populate agents — manual waive
+  const mwAgent = document.getElementById('mw-agent');
+  allAgents.forEach(a => mwAgent.add(new Option(a.formal_name, a.id)));
+
+  // Default date for manual waive = today
+  document.getElementById('mw-date').value = getToday();
+
+  // Populate waivers (unique)
+  const waivers = [...new Set((waiversRes.data || []).map(r => r.waived_by).filter(Boolean))];
+  const waiverSel = document.getElementById('filter-waiver');
+  waivers.sort().forEach(w => waiverSel.add(new Option(w, w)));
+
+  await loadData();
+}
+
+// ── FILTERS ──
+function onRangeChange() {
+  const val = document.getElementById('filter-range').value;
+  const isCustom = val === 'custom';
+  document.getElementById('custom-from-wrap').style.display = isCustom ? 'flex' : 'none';
+  document.getElementById('custom-to-wrap').style.display   = isCustom ? 'flex' : 'none';
+  if (isCustom) {
+    document.getElementById('filter-from').value = getToday();
+    document.getElementById('filter-to').value   = getToday();
+  }
+  loadData();
+}
+
+function resetFilters() {
+  document.getElementById('filter-range').value  = 'mtd';
+  document.getElementById('filter-agent').value  = '';
+  document.getElementById('filter-type').value   = '';
+  document.getElementById('filter-waiver').value = '';
+  document.getElementById('custom-from-wrap').style.display = 'none';
+  document.getElementById('custom-to-wrap').style.display   = 'none';
+  loadData();
+}
+
+function getDateRange() {
+  const val = document.getElementById('filter-range').value;
+  const today = getToday();
+  const t = new Date(today + 'T00:00:00');
+
+  if (val === 'today')  return { from: today, to: today };
+  if (val === 'all')    return { from: '2000-01-01', to: '2100-12-31' };
+  if (val === 'mtd') {
+    const first = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-01`;
+    return { from: first, to: today };
+  }
+  if (val === 'week') {
+    return { from: getWeekStart(), to: getWeekEnd() };
+  }
+  if (val === 'last7') {
+    const d = new Date(t); d.setDate(d.getDate() - 6);
+    return { from: d.toISOString().split('T')[0], to: today };
+  }
+  if (val === 'last30') {
+    const d = new Date(t); d.setDate(d.getDate() - 29);
+    return { from: d.toISOString().split('T')[0], to: today };
+  }
+  if (val === 'custom') {
+    return {
+      from: document.getElementById('filter-from').value || today,
+      to:   document.getElementById('filter-to').value   || today,
+    };
+  }
+  return { from: today, to: today };
+}
+
+// ── LOAD ──
+async function loadData() {
+  const tbody = document.getElementById('waive-tbody');
+  tbody.innerHTML = '<tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+
+  try {
+    const { from, to } = getDateRange();
+    const agentId  = document.getElementById('filter-agent').value;
+    const typeVal  = document.getElementById('filter-type').value;
+    const waiverV  = document.getElementById('filter-waiver').value;
+
+    let q = db.from('adherence_deviations').select('*')
+      .eq('is_waived', true)
+      .gte('deviation_date', from)
+      .lte('deviation_date', to)
+      .order('waived_at', { ascending: false });
+
+    if (agentId) q = q.eq('agent_id', agentId);
+    if (typeVal) q = q.eq('deviation_type', typeVal);
+    if (waiverV) q = q.eq('waived_by', waiverV);
+
+    const { data, error } = await q;
+    if (error) throw error;
+    currentData = data || [];
+    renderTable(currentData);
+    renderKPIs(currentData);
+    document.getElementById('row-count').innerText = currentData.length + ' waived record(s)';
+
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">❌</span>${e.message}</div></td></tr>`;
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── RENDER ──
+function typeClass(t) {
+  const m = {
+    'Late Login':'dev-type-late', 'Early Logout':'dev-type-early',
+    'Long Break':'dev-type-long', 'Missed Shift':'dev-type-missed',
+    'Extra Break':'dev-type-extra', 'Outage':'dev-type-outage',
+    'System Issue':'dev-type-system'
+  };
+  return m[t] || '';
+}
+function typeIcon(t) {
+  const m = {
+    'Late Login':'⏰', 'Early Logout':'🚪',
+    'Long Break':'☕', 'Missed Shift':'❌', 'Extra Break':'➕',
+    'Outage':'⚡', 'System Issue':'🖥️'
+  };
+  return m[t] || '•';
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('waive-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">📭</span>No waived deviations in this range</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => {
+    const waivedDate = r.waived_at ? new Date(r.waived_at) : null;
+    const waivedAtFmt = waivedDate
+      ? waivedDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) + ' ' + waivedDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      : '—';
+
+    return `<tr>
+      <td style="font-weight:700;color:var(--gold);white-space:nowrap;">${formatDateShort(r.deviation_date)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(r.agent_name)}</div>
+          <span style="font-weight:700;">${r.agent_name}</span>
+        </div>
+      </td>
+      <td class="${typeClass(r.deviation_type)}">${typeIcon(r.deviation_type)} ${r.deviation_type}</td>
+      <td><span class="min-pill">+${r.deviation_minutes} min</span></td>
+      <td class="reason-cell" title="${(r.waive_reason||'').replace(/"/g,'&quot;')}">${r.waive_reason || '<em style="color:var(--muted);">No reason</em>'}</td>
+      <td>
+        <span class="waiver-pill">
+          <i class="fas fa-user-shield"></i> ${r.waived_by || '—'}
+        </span>
+      </td>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap;">${waivedAtFmt}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        <button class="btn btn-danger btn-sm" onclick="confirmUnwaive('${r.id}')" title="Unwaive">
+          <i class="fas fa-undo"></i> Unwaive
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── KPIs ──
+function renderKPIs(data) {
+  if (!data.length) {
+    document.getElementById('kpi-total').innerText   = '0';
+    document.getElementById('kpi-mins').innerText    = '0 min';
+    document.getElementById('kpi-agents').innerText  = '0';
+    document.getElementById('kpi-top').innerText     = 'None';
+    document.getElementById('kpi-top-sub').innerText = '';
+    return;
+  }
+
+  const total    = data.length;
+  const totalMin = data.reduce((s,r) => s + (r.deviation_minutes||0), 0);
+
+  const agentMap = {};
+  data.forEach(r => {
+    if (!agentMap[r.agent_name]) agentMap[r.agent_name] = 0;
+    agentMap[r.agent_name]++;
+  });
+  const sorted = Object.entries(agentMap).sort((a,b) => b[1]-a[1]);
+  const topAgent = sorted[0];
+
+  document.getElementById('kpi-total').innerText    = total;
+  document.getElementById('kpi-mins').innerText     = totalMin + ' min';
+  document.getElementById('kpi-agents').innerText   = Object.keys(agentMap).length;
+  document.getElementById('kpi-top').innerText      = topAgent ? topAgent[0] : 'None';
+  document.getElementById('kpi-top-sub').innerText  = topAgent ? (topAgent[1] + ' waives') : '';
+}
+
+// ── UNWAIVE ──
+function confirmUnwaive(id) {
+  const r = currentData.find(x => x.id === id);
+  if (!r) return;
+  openModal('Unwaive Deviation',
+    `Move this ${r.deviation_type} (${r.deviation_minutes} min) for ${r.agent_name} back to active deviations? The original reason will be cleared.`,
+    async () => {
+      try {
+        const { error } = await db.from('adherence_deviations').update({
+          is_waived:    false,
+          waived_by:    null,
+          waived_at:    null,
+          waive_reason: null,
+        }).eq('id', id);
+        if (error) throw error;
+        logAudit({ module: 'Waiving', action: 'UPDATE', targetTable: 'adherence_deviations', targetId: id,
+          description: `Unwaived ${r.deviation_type} (${r.deviation_minutes} min) for ${r.agent_name} on ${r.deviation_date}`,
+          oldValue: { is_waived: true, waive_reason: r.waive_reason } });
+
+        showToast('Deviation unwaived — moved back to active log', 'warning');
+        await loadData();
+      } catch(e) { showToast('Failed: '+e.message, 'error'); }
+    }
+  );
+}
+
+// ══════════════════════════════════════════
+// ── MANUAL WAIVE LOGIC ──
+// ══════════════════════════════════════════
+
+function getTotalMinutes() {
+  const h = parseInt(document.getElementById('mw-hours').value)   || 0;
+  const m = parseInt(document.getElementById('mw-minutes').value) || 0;
+  return h * 60 + m;
+}
+
+function updatePreview() {
+  const agentSel = document.getElementById('mw-agent');
+  const agentName = agentSel.options[agentSel.selectedIndex]?.text || '';
+  const agentId  = agentSel.value;
+  const date     = document.getElementById('mw-date').value;
+  const type     = document.getElementById('mw-type').value;
+  const totalMin = getTotalMinutes();
+  const reason   = document.getElementById('mw-reason').value.trim();
+
+  const valid = agentId && date && type && totalMin > 0;
+  document.getElementById('mw-submit-btn').disabled = !valid;
+
+  const preview = document.getElementById('mw-preview');
+  if (!valid) { preview.style.display = 'none'; return; }
+
+  const hrs = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  const durStr = hrs > 0 ? `${hrs}h ${min}min` : `${min} min`;
+
+  preview.style.display = 'block';
+  preview.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      <span style="color:var(--text);font-weight:700;">${agentName}</span>
+      <span style="color:var(--muted);">•</span>
+      <span style="color:var(--gold);font-weight:700;">${formatDateShort(date)}</span>
+      <span style="color:var(--muted);">•</span>
+      <span class="${typeClass(type)}">${typeIcon(type)} ${type}</span>
+      <span style="color:var(--muted);">•</span>
+      <span class="preview-pill">+${totalMin} min${hrs > 0 ? ' ('+durStr+')' : ''}</span>
+      ${reason ? `<span style="color:var(--muted);">•</span><span style="font-style:italic;font-size:12px;">"${reason}"</span>` : ''}
+    </div>
+  `;
+}
+
+async function submitManualWaive() {
+  const agentSel  = document.getElementById('mw-agent');
+  const agentId   = agentSel.value;
+  const agentName = agentSel.options[agentSel.selectedIndex]?.text || '';
+  const date      = document.getElementById('mw-date').value;
+  const type      = document.getElementById('mw-type').value;
+  const totalMin  = getTotalMinutes();
+  const reason    = document.getElementById('mw-reason').value.trim();
+
+  if (!agentId || !date || !type || totalMin <= 0) {
+    showToast('Please fill all required fields and enter a duration', 'error');
+    return;
+  }
+
+  const adminName = session?.username || 'Admin';
+
+  const btn = document.getElementById('mw-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    const { error } = await db.from('adherence_deviations').insert({
+      agent_id:          agentId,
+      agent_name:        agentName,
+      deviation_date:    date,
+      deviation_type:    type,
+      deviation_minutes: totalMin,
+      is_waived:         true,
+      waived_by:         adminName,
+      waived_at:         new Date().toISOString(),
+      waive_reason:      reason || null,
+      source:            'Manual',
+      created_by:        adminName,
+    });
+    if (error) throw error;
+    logAudit({ module: 'Waiving', action: 'INSERT', targetTable: 'adherence_deviations',
+      description: `Manual waive for ${agentName}: ${type} (${totalMin} min) on ${date}${reason ? ' — reason: ' + reason : ''}` });
+
+    showToast(`✅ Waive saved for ${agentName} (${totalMin} min)`, 'success');
+
+    // Reset form
+    document.getElementById('mw-agent').value   = '';
+    document.getElementById('mw-date').value    = getToday();
+    document.getElementById('mw-type').value    = '';
+    document.getElementById('mw-hours').value   = '';
+    document.getElementById('mw-minutes').value = '';
+    document.getElementById('mw-reason').value  = '';
+    document.getElementById('mw-preview').style.display = 'none';
+
+    // Refresh history in background
+    await loadData();
+
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check-circle"></i> Save Waive';
+  }
+}
+
+// ── HELPERS ──
+// ══════════════════ BULK WAIVE ══════════════════
+let bwAffectedRows = [];
+
+function initBulkWaive() {
+  if (!document.getElementById('bw-date').value) {
+    document.getElementById('bw-date').value = getToday();
+  }
+}
+
+function bwClearPreview() {
+  bwAffectedRows = [];
+  document.getElementById('bw-preview-area').style.display = 'none';
+  document.getElementById('bw-empty-msg').style.display    = 'none';
+  document.getElementById('bw-submit-btn').disabled        = true;
+}
+
+async function bwPreview() {
+  const date   = document.getElementById('bw-date').value;
+  const type   = document.getElementById('bw-type').value;
+  const reason = document.getElementById('bw-reason').value.trim();
+
+  if (!date)   { showToast('Please select a date first', 'error'); return; }
+  if (!reason) { showToast('Please write a reason first', 'error'); return; }
+
+  const btn = document.getElementById('bw-preview-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+
+  try {
+    let query = db.from('adherence_deviations')
+      .select('id, agent_name, deviation_type, deviation_minutes')
+      .eq('deviation_date', date)
+      .eq('is_waived', false);
+    if (type) query = query.eq('deviation_type', type);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    bwAffectedRows = data || [];
+
+    if (bwAffectedRows.length === 0) {
+      document.getElementById('bw-empty-msg').style.display    = 'block';
+      document.getElementById('bw-preview-area').style.display = 'none';
+      document.getElementById('bw-submit-btn').disabled        = true;
+    } else {
+      const tbody = document.getElementById('bw-preview-tbody');
+      tbody.innerHTML = bwAffectedRows.map(r => `
+        <tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 12px;color:var(--text);">${r.agent_name}</td>
+          <td style="padding:8px 12px;color:var(--muted);">${r.deviation_type}</td>
+          <td style="padding:8px 12px;color:#F59E0B;font-weight:700;">${r.deviation_minutes} min</td>
+        </tr>`).join('');
+      document.getElementById('bw-count-label').textContent =
+        `${bwAffectedRows.length} deviation${bwAffectedRows.length > 1 ? 's' : ''} will be waived`;
+      document.getElementById('bw-preview-area').style.display = 'block';
+      document.getElementById('bw-empty-msg').style.display    = 'none';
+      document.getElementById('bw-submit-btn').disabled        = false;
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-search"></i> Preview Affected';
+  }
+}
+
+async function bwSubmit() {
+  if (!bwAffectedRows.length) return;
+
+  const reason    = document.getElementById('bw-reason').value.trim();
+  const adminName = session?.username || 'Admin';
+  const now       = new Date().toISOString();
+  const ids       = bwAffectedRows.map(r => r.id);
+
+  const confirmed = confirm(
+    `You are about to waive ${ids.length} deviation(s) — are you sure?`
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById('bw-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+  try {
+    const { error } = await db.from('adherence_deviations')
+      .update({ is_waived: true, waived_by: adminName, waived_at: now, waive_reason: reason })
+      .in('id', ids);
+    if (error) throw error;
+    logAudit({ module: 'Waiving', action: 'UPDATE', targetTable: 'adherence_deviations',
+      description: `Bulk waived ${ids.length} deviation(s)${reason ? ' — reason: ' + reason : ''} — agents: ${[...new Set(bwAffectedRows.map(r => r.agent_name))].join(', ')}` });
+
+    showToast(`✅ Successfully waived ${ids.length} deviation(s)`, 'success');
+    bwClearPreview();
+    document.getElementById('bw-reason').value = '';
+    document.getElementById('bw-date').value   = getToday();
+    document.getElementById('bw-type').value   = '';
+    await loadData();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-layer-group"></i> Waive All';
+  }
+}
+
+function refreshCurrentTab() {
+  const isManual    = document.getElementById('tab-manual')?.classList.contains('active');
+  const isBreakdown = document.getElementById('tab-breakdown')?.classList.contains('active');
+  if (isBreakdown) loadBreakdown();
+  else if (!isManual) loadData();
+}
+
+function formatDateShort(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' });
+}
+
+// ══════════════════════════════════════════
+// ── NET MISSING BREAKDOWN ──
+// ══════════════════════════════════════════
+
+function secToHMS(s) {
+  if (!s || s <= 0) return '00:00:00';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');
+}
+
+async function loadBreakdown() {
+  const tbody = document.getElementById('bd-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+
+  // ── populate years from actual DB data (once) ──
+  const bdYearSel = document.getElementById('bd-year');
+  if (bdYearSel && bdYearSel.options.length === 0) {
+    try {
+      const { data: yearRows } = await db.from('daily_performance')
+        .select('perf_date')
+        .order('perf_date', { ascending: true });
+      
+      const years = [...new Set((yearRows || []).map(r => r.perf_date.split('-')[0]))];
+      const nowYear = String(new Date().getFullYear());
+      years.forEach(y => {
+        const opt = new Option(y, y);
+        if (y === nowYear) opt.selected = true;
+        bdYearSel.add(opt);
+      });
+      // fallback if DB empty
+      if (bdYearSel.options.length === 0) {
+        bdYearSel.add(new Option(nowYear, nowYear));
+      }
+    } catch(_) {
+      const nowYear = String(new Date().getFullYear());
+      bdYearSel.add(new Option(nowYear, nowYear));
+    }
+  }
+
+  // ── auto-set current month (once, on first open) ──
+  const bdMonthSel = document.getElementById('bd-month');
+  if (bdMonthSel && !bdMonthSel.dataset.initialised) {
+    bdMonthSel.value = String(new Date().getMonth() + 1).padStart(2, '0');
+    bdMonthSel.dataset.initialised = '1';
+  }
+
+  const month = bdMonthSel?.value || String(new Date().getMonth()+1).padStart(2,'0');
+  const year  = bdYearSel?.value  || String(new Date().getFullYear());
+  const agentFilter = document.getElementById('bd-agent')?.value || '';
+
+  const dateFrom = `${year}-${month}-01`;
+  const lastDay  = new Date(parseInt(year), parseInt(month), 0).getDate();
+  const dateTo   = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
+
+  try {
+    // Populate agent dropdown if empty
+    const bdAgentSel = document.getElementById('bd-agent');
+    if (bdAgentSel && bdAgentSel.options.length === 1) {
+      allAgents.forEach(a => bdAgentSel.add(new Option(a.formal_name, a.id)));
+    }
+
+    const [perfRes, devRes] = await Promise.all([
+      db.from('daily_performance')
+        .select('agent_id,agent_name,missing_sec,active_sec,target_sec')
+        .gte('perf_date', dateFrom).lte('perf_date', dateTo),
+      db.from('adherence_deviations')
+        .select('agent_id,is_waived,deviation_minutes')
+        .gte('deviation_date', dateFrom).lte('deviation_date', dateTo)
+    ]);
+
+    const perfData = perfRes.data || [];
+    const devData  = devRes.data  || [];
+
+    // Filter agents to show
+    const agentsToShow = agentFilter
+      ? allAgents.filter(a => a.id === agentFilter)
+      : allAgents;
+
+    // Only agents that have performance data
+    const rows = agentsToShow
+      .filter(a => perfData.some(p => p.agent_id === a.id))
+      .map(agent => {
+        const agentPerf = perfData.filter(p => p.agent_id === agent.id);
+        const agentDevs = devData.filter(d => d.agent_id === agent.id);
+
+        const totalMissingSec = agentPerf.reduce((s,p) => s + (p.missing_sec || 0), 0);
+        const totalExtraSec   = agentPerf.reduce((s,p) => s + Math.max(0, (p.active_sec||0) - (p.target_sec||0)), 0);
+        const afterExtra      = Math.max(0, totalMissingSec - totalExtraSec);
+        const waivedMin       = agentDevs.filter(d => d.is_waived).reduce((s,d) => s + (d.deviation_minutes||0), 0);
+        const waivedSec       = waivedMin * 60;
+        const netMissingSec   = Math.max(0, afterExtra - waivedSec);
+        const isFullTime      = netMissingSec <= 300;
+
+        // Reason why Full Time
+        let reason = '—';
+        if (isFullTime) {
+          if (totalMissingSec === 0) reason = 'No missing time at all';
+          else if (totalExtraSec >= totalMissingSec) reason = 'Extra time covers all missing';
+          else if (waivedSec >= afterExtra) reason = 'Waived time covers the rest';
+          else reason = 'Under 5-min grace period';
+        }
+
+        return { name: agent.formal_name, totalMissingSec, totalExtraSec, afterExtra, waivedMin, waivedSec, netMissingSec, isFullTime, reason };
+      });
+
+    document.getElementById('bd-row-count').innerText = rows.length + ' agent(s)';
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">📭</span>No performance data for this period</div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      const resultColor = r.isFullTime ? '#10B981' : '#EF4444';
+      const resultText  = r.isFullTime ? '✅ Full Time' : secToHMS(r.netMissingSec);
+      const waivedDisplay = r.waivedMin > 0 ? `${r.waivedMin} min (${secToHMS(r.waivedSec)})` : '<span style="color:var(--muted);">None</span>';
+
+      // Highlight cells that are "doing the work"
+      const extraHighlight = r.totalExtraSec > 0 && r.totalExtraSec >= r.totalMissingSec ? 'color:#10B981;font-weight:800;' : '';
+      const waivedHighlight = r.waivedMin > 0 && r.isFullTime ? 'color:#3B82F6;font-weight:800;' : '';
+
+      return `<tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="agent-avatar" style="width:28px;height:28px;font-size:10px;">${initials(r.name)}</div>
+            <span style="font-weight:700;">${r.name}</span>
+          </div>
+        </td>
+        <td style="text-align:center;font-family:monospace;color:${r.totalMissingSec>0?'#EF4444':'var(--muted)'};">${secToHMS(r.totalMissingSec)}</td>
+        <td style="text-align:center;font-family:monospace;${extraHighlight}">${r.totalExtraSec > 0 ? '−' + secToHMS(r.totalExtraSec) : '<span style="color:var(--muted);">—</span>'}</td>
+        <td style="text-align:center;font-family:monospace;color:${r.afterExtra>0?'#F59E0B':'#10B981'};">${secToHMS(r.afterExtra)}</td>
+        <td style="text-align:center;${waivedHighlight}">${waivedDisplay}</td>
+        <td style="text-align:center;font-family:monospace;font-weight:800;color:${r.netMissingSec>300?'#EF4444':'#10B981'};">${secToHMS(r.netMissingSec)}</td>
+        <td style="text-align:center;font-weight:800;color:${resultColor};">${resultText}</td>
+        <td style="text-align:center;font-size:11px;color:var(--muted);max-width:180px;white-space:normal;">${r.isFullTime ? '<span style="color:#10B981;">'+r.reason+'</span>' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">❌</span>${e.message}</div></td></tr>`;
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

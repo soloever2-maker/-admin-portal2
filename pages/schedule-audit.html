@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="../logo.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOS Admin — Schedule Audit</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    /* ── Audit Table ── */
+    .audit-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .audit-table th {
+      padding:8px 6px; background:var(--surface2); border:1px solid var(--border);
+      color:var(--muted); font-weight:700; text-align:center; white-space:nowrap;
+    }
+    .audit-table td {
+      padding:5px 6px; border:1px solid var(--border);
+      text-align:center; vertical-align:middle;
+    }
+    .audit-table td.agent-col {
+      text-align:left; padding:8px 14px; font-weight:700; font-size:12px;
+      background:var(--surface2); white-space:nowrap; min-width:140px;
+    }
+    /* ── Shift Cells ── */
+    .cell-pill {
+      display:inline-block; padding:4px 8px; border-radius:7px;
+      font-size:11px; font-weight:700; color:#fff; width:100%;
+      box-sizing:border-box;
+    }
+    .cell-off            { background:#64748B; }
+    .cell-work-morning   { background:#10B981; }
+    .cell-work-afternoon { background:#0EA5E9; }
+    .cell-work-evening   { background:#F59E0B; color:#000; }
+    .cell-work-night     { background:#6366F1; }
+    .cell-work-other     { background:#10B981; }
+    .cell-annual         { background:#8B5CF6; }
+    .cell-sick           { background:#F43F5E; }
+    .cell-casual         { background:#F59E0B; color:#000; }
+    .cell-ph             { background:#3B82F6; }
+    .cell-empty          { color:var(--muted); font-size:11px; font-style:italic; }
+    /* ── Match indicators ── */
+    .match-cell { outline:2.5px solid #10B981; outline-offset:-2px; border-radius:8px; }
+    .diff-cell  { outline:2.5px solid #EF4444; outline-offset:-2px; border-radius:8px; }
+    .noreq-cell { opacity:0.65; }
+    /* ── Summary badges ── */
+    .sa-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+    .sa-badge {
+      flex:1; min-width:130px; padding:14px 18px; border-radius:14px;
+      background:var(--surface); border:1px solid var(--border);
+    }
+    .sa-badge .val { font-size:26px; font-weight:900; }
+    .sa-badge .lbl { font-size:11px; color:var(--muted); margin-top:2px; }
+    /* ── Section label ── */
+    .grid-label {
+      font-size:13px; font-weight:800; color:var(--text);
+      padding:14px 18px 10px; display:flex; align-items:center; gap:8px;
+    }
+    /* ── Legend ── */
+    .legend { display:flex; gap:14px; flex-wrap:wrap; padding:10px 18px 14px; }
+    .legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+    .legend-dot  { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  </style>
+</head>
+<body>
+
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Schedule Audit</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Schedule vs Requests
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- Filter Bar -->
+      <div class="section-card fade-up">
+        <div class="section-body">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;min-width:220px;">
+              <label class="form-label">Week</label>
+              <select id="week-select" class="form-input" onchange="loadAudit()">
+                <option value="">— Select Week —</option>
+              </select>
+            </div>
+            <div style="margin-top:18px;">
+              <button class="btn btn-ghost" id="export-btn" onclick="exportExcel()" style="display:none;">
+                <i class="fas fa-file-excel" style="color:#10B981;"></i> Export Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary Badges -->
+      <div class="sa-summary" id="summary-badges" style="display:none;"></div>
+
+      <!-- Legend -->
+      <div class="section-card fade-up" id="legend-card" style="display:none;">
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#10B981;outline:2px solid #10B981;outline-offset:1px;"></div> Match — Executed as requested</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#EF4444;outline:2px solid #EF4444;outline-offset:1px;"></div> Changed — Different from request</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#64748B;opacity:0.5;"></div> No Request — Agent did not submit</div>
+        </div>
+      </div>
+
+      <!-- GRID 1: Requests -->
+      <div class="section-card fade-up" id="requests-section" style="display:none;">
+        <div class="grid-label">
+          <i class="fas fa-paper-plane" style="color:#3B82F6;"></i>
+          Requests — What agents submitted
+        </div>
+        <div class="section-body no-pad" style="overflow-x:auto;">
+          <div id="requests-grid"></div>
+        </div>
+      </div>
+
+      <!-- GRID 2: Published -->
+      <div class="section-card fade-up" id="published-section" style="display:none;">
+        <div class="grid-label">
+          <i class="fas fa-calendar-check" style="color:var(--gold);"></i>
+          Published Schedule — What was actually assigned
+          <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:8px;">(🟢 Match &nbsp; 🔴 Changed)</span>
+        </div>
+        <div class="section-body no-pad" style="overflow-x:auto;">
+          <div id="published-grid"></div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="empty-state" style="padding:60px;text-align:center;color:var(--muted);">
+        <i class="fas fa-calendar-times" style="font-size:40px;margin-bottom:14px;display:block;opacity:0.3;"></i>
+        Select a week to view the audit
+      </div>
+
+    </div><!-- /page-content -->
+  </div><!-- /main-content -->
+</div><!-- /admin-layout -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText   = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+// ── State ──
+let shiftTypes = [];
+let auditData  = null;
+let exportRows = [];
+
+// ── Init ──
+(async function init() {
+  try {
+    const [stRes, wkRes] = await Promise.all([
+      db.from('shift_types').select('*').eq('is_active', true),
+      db.from('schedule_weeks').select('*').order('week_start', { ascending: false })
+    ]);
+    shiftTypes = stRes.data || [];
+
+    const sel = document.getElementById('week-select');
+    (wkRes.data || []).forEach(w => {
+      const opt = document.createElement('option');
+      opt.value = w.id;
+      const from = formatDate(w.week_start);
+      const to   = addDays(w.week_start, 6);
+      opt.text   = `${from} → ${to}  (${w.status})`;
+      sel.add(opt);
+    });
+
+    if (!wkRes.data || !wkRes.data.length) {
+      document.getElementById('empty-state').innerHTML =
+        '<i class="fas fa-inbox" style="font-size:40px;margin-bottom:14px;display:block;opacity:0.3;"></i>No weeks found in the database.';
+    }
+  } catch(e) {
+    document.getElementById('empty-state').innerHTML =
+      `<i class="fas fa-exclamation-triangle" style="font-size:40px;margin-bottom:14px;display:block;color:#EF4444;opacity:0.6;"></i>
+       <div style="color:#EF4444;">Error loading data</div>
+       <div style="font-size:12px;margin-top:8px;">${e.message}</div>`;
+  }
+})();
+
+// ── Load Audit ──
+async function loadAudit() {
+  const weekId = document.getElementById('week-select').value;
+  if (!weekId) { document.getElementById('empty-state').style.display = 'block'; return; }
+  document.getElementById('empty-state').style.display = 'none';
+
+  const [wkRes, agRes, reqRes, schRes] = await Promise.all([
+    db.from('schedule_weeks').select('*').eq('id', weekId).single(),
+    db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+    db.from('requests').select('*').eq('type','Schedule Request'),
+    db.from('schedule').select('*').eq('week_id', weekId)
+  ]);
+
+  const week   = wkRes.data;
+  const agents = agRes.data || [];
+  const dates  = Array.from({ length: 7 }, (_, i) => addDaysISO(week.week_start, i));
+
+  // Build requests map: agent_id → draft object
+  const weekReqs = (reqRes.data || []).filter(r => {
+    try { const d = JSON.parse(r.details); return String(d.week_id) === String(weekId); } catch(e) { return false; }
+  });
+  const reqMap = {};
+  weekReqs.forEach(r => {
+    try { const d = JSON.parse(r.details); reqMap[String(r.agent_id)] = d.draft || {}; } catch(e) {}
+  });
+
+  // Build schedule map: agent_id_date → row
+  const schMap = {};
+  (schRes.data || []).forEach(s => { schMap[String(s.agent_id) + '_' + s.shift_date] = s; });
+
+  auditData = { week, agents, reqMap, schMap, dates };
+
+  renderSummary();
+  renderRequestsGrid();
+  renderPublishedGrid();
+
+  ['requests-section','published-section','legend-card'].forEach(id =>
+    document.getElementById(id).style.display = 'block');
+  document.getElementById('export-btn').style.display     = 'inline-flex';
+  document.getElementById('summary-badges').style.display = 'flex';
+}
+
+// ── Summary ──
+function renderSummary() {
+  const { agents, reqMap, schMap, dates } = auditData;
+  let submitted = 0, fullMatch = 0, partial = 0, noReq = 0;
+
+  agents.forEach(a => {
+    const draft = reqMap[String(a.id)];
+    if (!draft) { noReq++; return; }
+    submitted++;
+    let match = 0, total = 0;
+    dates.forEach(date => {
+      const req = draft[date];
+      const sch = schMap[String(a.id) + '_' + date];
+      if (!req) return;
+      total++;
+      if (sch && req.day_type === sch.day_type &&
+          (req.shift_type_id||null) === (sch.shift_type_id||null)) match++;
+    });
+    if (total === 0) return;
+    if (match === total) fullMatch++; else partial++;
+  });
+
+  document.getElementById('summary-badges').innerHTML = `
+    <div class="sa-badge"><div class="val">${agents.length}</div><div class="lbl">Total Agents</div></div>
+    <div class="sa-badge"><div class="val" style="color:#3B82F6;">${submitted}</div><div class="lbl">Submitted Request</div></div>
+    <div class="sa-badge"><div class="val" style="color:#10B981;">${fullMatch}</div><div class="lbl">Full Match ✅</div></div>
+    <div class="sa-badge"><div class="val" style="color:#F59E0B;">${partial}</div><div class="lbl">Partial Match ⚠️</div></div>
+    <div class="sa-badge"><div class="val" style="color:#EF4444;">${noReq}</div><div class="lbl">No Request ❌</div></div>
+  `;
+}
+
+// ── Requests Grid ──
+function renderRequestsGrid() {
+  const { agents, reqMap, schMap, dates } = auditData;
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let html = `<table class="audit-table"><thead><tr>
+    <th style="text-align:left;">Agent</th>
+    ${dates.map(d => {
+      const dt = new Date(d + 'T00:00:00');
+      return `<th>${DAYS[dt.getDay()]}<br><span style="font-weight:400;font-size:10px;">${d.slice(8)}</span></th>`;
+    }).join('')}
+    <th>Match</th>
+  </tr></thead><tbody>`;
+
+  exportRows = [];
+
+  agents.forEach(a => {
+    const draft = reqMap[String(a.id)];
+    let matchCount = 0, reqCount = 0;
+
+    const cells = dates.map(date => {
+      const req = draft ? draft[date] : null;
+      const sch = schMap[String(a.id) + '_' + date];
+      if (!req) return `<td><span class="cell-empty">—</span></td>`;
+      reqCount++;
+      const isMatch = sch && req.day_type === sch.day_type &&
+                      (req.shift_type_id||null) === (sch.shift_type_id||null);
+      if (isMatch) matchCount++;
+      return `<td><div class="cell-pill ${getShiftClass(req)}">${getShiftLabel(req)}</div></td>`;
+    });
+
+    const matchPct   = reqCount > 0 ? Math.round((matchCount / reqCount) * 100) : null;
+    const matchBadge = !draft
+      ? `<span style="color:var(--muted);font-size:11px;">No request</span>`
+      : matchPct === 100
+        ? `<span style="color:#10B981;font-weight:800;">100% ✅</span>`
+        : `<span style="color:#F59E0B;font-weight:800;">${matchPct}%</span>`;
+
+    html += `<tr><td class="agent-col">${a.formal_name}</td>${cells.join('')}<td>${matchBadge}</td></tr>`;
+
+    const row = { Agent: a.formal_name };
+    dates.forEach(date => {
+      const lbl = DAYS[new Date(date + 'T00:00:00').getDay()] + ' ' + date.slice(8);
+      row['REQ ' + lbl] = (draft && draft[date]) ? getShiftLabel(draft[date]) : '—';
+    });
+    if (matchPct !== null) row['Match %'] = matchPct + '%';
+    exportRows.push(row);
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('requests-grid').innerHTML = html;
+}
+
+// ── Published Grid ──
+function renderPublishedGrid() {
+  const { agents, reqMap, schMap, dates } = auditData;
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let html = `<table class="audit-table"><thead><tr>
+    <th style="text-align:left;">Agent</th>
+    ${dates.map(d => {
+      const dt = new Date(d + 'T00:00:00');
+      return `<th>${DAYS[dt.getDay()]}<br><span style="font-weight:400;font-size:10px;">${d.slice(8)}</span></th>`;
+    }).join('')}
+  </tr></thead><tbody>`;
+
+  agents.forEach(a => {
+    const draft = reqMap[String(a.id)];
+    const cells = dates.map(date => {
+      const sch = schMap[String(a.id) + '_' + date];
+      const req = draft ? draft[date] : null;
+      if (!sch) return `<td><span class="cell-empty">—</span></td>`;
+
+      const isMatch = req && sch.day_type === req.day_type &&
+                      (sch.shift_type_id||null) === (req.shift_type_id||null);
+      const cls   = !req ? 'noreq-cell' : isMatch ? 'match-cell' : 'diff-cell';
+      const title = !req ? 'No request submitted' : isMatch ? 'Match ✅' : 'Changed ❌';
+
+      return `<td><div class="cell-pill ${getShiftClass(sch)} ${cls}" title="${title}">${getShiftLabel(sch)}</div></td>`;
+    });
+
+    html += `<tr><td class="agent-col">${a.formal_name}</td>${cells.join('')}</tr>`;
+
+    const expRow = exportRows.find(r => r.Agent === a.formal_name);
+    if (expRow) {
+      dates.forEach(date => {
+        const lbl = DAYS[new Date(date + 'T00:00:00').getDay()] + ' ' + date.slice(8);
+        const sch = schMap[String(a.id) + '_' + date];
+        const req = draft ? draft[date] : null;
+        expRow['SCH ' + lbl] = sch ? getShiftLabel(sch) : '—';
+        const isMatch = req && sch && sch.day_type === req.day_type &&
+                        (sch.shift_type_id||null) === (req.shift_type_id||null);
+        expRow['DIFF ' + lbl] = !req ? 'No Req' : isMatch ? '✅' : '❌ Changed';
+      });
+    }
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('published-grid').innerHTML = html;
+}
+
+// ── Export Excel ──
+function exportExcel() {
+  if (!exportRows.length) return;
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Audit');
+  XLSX.writeFile(wb, `schedule-audit-${auditData?.week?.week_start || 'week'}.xlsx`);
+  showToast('Export complete', 'success');
+}
+
+// ── Helpers ──
+function getShiftClass(entry) {
+  if (!entry) return 'cell-empty';
+  const dt = entry.day_type;
+  if (dt === 'Off')    return 'cell-off';
+  if (dt === 'Annual') return 'cell-annual';
+  if (dt === 'Sick')   return 'cell-sick';
+  if (dt === 'Casual') return 'cell-casual';
+  if (dt === 'PH')     return 'cell-ph';
+  if (dt === 'Work') {
+    const st = shiftTypes.find(s => s.id === entry.shift_type_id);
+    if (!st) return 'cell-work-other';
+    const h = parseInt((st.start_time || '00:00').split(':')[0]);
+    if (h < 12) return 'cell-work-morning';
+    if (h < 16) return 'cell-work-afternoon';
+    if (h < 20) return 'cell-work-evening';
+    return 'cell-work-night';
+  }
+  return 'cell-off';
+}
+
+function getShiftLabel(entry) {
+  if (!entry) return '—';
+  if (entry.day_type !== 'Work') return entry.day_type;
+  const st = shiftTypes.find(s => s.id === entry.shift_type_id);
+  if (!st) return 'Work';
+  return st.start_time.slice(0,5) + ' – ' + st.end_time.slice(0,5);
+}
+
+function formatDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+}
+
+function addDays(iso, n) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+}
+
+function addDaysISO(iso, n) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
+}
+</script>
+</body>
+</html>

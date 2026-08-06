@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Annual Leave</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.leave-table { width:100%; border-collapse:collapse; min-width:1100px; }
+.leave-table thead th {
+  background:var(--surface2); padding:10px 12px;
+  font-size:11px; font-weight:700; color:var(--muted);
+  text-align:center; letter-spacing:.5px; text-transform:uppercase;
+  white-space:nowrap; border-bottom:1px solid var(--border);
+}
+.leave-table thead th:first-child { text-align:left; }
+.leave-table tbody td {
+  padding:10px 12px; font-size:13px;
+  border-bottom:1px solid var(--border);
+  text-align:center; vertical-align:middle;
+}
+.leave-table tbody td:first-child { text-align:left; }
+.leave-table tbody tr:hover { background:rgba(255,255,255,0.02); }
+.month-val { font-family:monospace; font-size:13px; font-weight:700; color:var(--text); }
+.month-val.zero { color:var(--muted); font-weight:400; }
+.editable-input {
+  width:52px; padding:4px 6px; text-align:center;
+  background:var(--surface2); border:1.5px solid var(--border);
+  border-radius:6px; color:var(--text); font-size:12px;
+  font-family:inherit; outline:none; transition:border-color .2s;
+}
+.editable-input:focus { border-color:var(--gold); }
+.remaining-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:36px; padding:3px 10px; border-radius:20px;
+  font-size:12px; font-weight:800;
+}
+.remaining-ok   { background:rgba(16,185,129,.15); color:#10B981; }
+.remaining-warn { background:rgba(245,158,11,.15);  color:#F59E0B; }
+.remaining-low  { background:rgba(239,68,68,.15);   color:#EF4444; }
+.total-used-val { font-weight:800; font-size:14px; color:var(--gold); }
+.month-header-group th { background:rgba(212,175,55,0.06); border-bottom:2px solid var(--gold); }
+.summary-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.summary-chip {
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; padding:10px 16px;
+  display:flex; flex-direction:column; gap:2px; min-width:120px;
+}
+.summary-chip .sc-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+.summary-chip .sc-val   { font-size:20px; font-weight:800; color:var(--text); }
+.year-select {
+  padding:7px 14px; background:var(--surface2);
+  border:1.5px solid var(--border); border-radius:8px;
+  color:var(--text); font-size:13px; font-family:inherit;
+  outline:none; cursor:pointer; transition:border-color .2s;
+}
+.year-select:focus { border-color:var(--gold); }
+.save-row-btn {
+  padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700;
+  background:rgba(212,175,55,.15); color:var(--gold);
+  border:1px solid rgba(212,175,55,.3); cursor:pointer;
+  transition:all .2s; white-space:nowrap;
+}
+.save-row-btn:hover { background:rgba(212,175,55,.25); }
+.save-row-btn.saved { background:rgba(16,185,129,.15); color:#10B981; border-color:rgba(16,185,129,.3); }
+</style>
+</head>
+<body>
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Annual Leave</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Leave Balance Tracker</div>
+      </div>
+      <div class="topbar-right">
+        <select class="year-select" id="year-select" onchange="loadData()">
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="loadData()">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">AD</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- Tabs -->
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchTab('balance',this)">🏖️ Leave Balance</button>
+        <button class="tab-btn" onclick="switchTab('summary',this)">📊 Annual Balance</button>
+      </div>
+
+      <!-- TAB: Leave Balance -->
+      <div id="tab-balance">
+        <div class="summary-bar fade-up">
+          <div class="summary-chip"><span class="sc-label">Total Agents</span><span class="sc-val" id="s-agents">—</span></div>
+          <div class="summary-chip"><span class="sc-label">Total Entitlement</span><span class="sc-val" id="s-entitlement">—</span></div>
+          <div class="summary-chip"><span class="sc-label">Total Used</span><span class="sc-val" id="s-used" style="color:var(--gold)">—</span></div>
+          <div class="summary-chip"><span class="sc-label">Total Remaining</span><span class="sc-val" id="s-remaining" style="color:#10B981">—</span></div>
+          <div class="summary-chip"><span class="sc-label">Low Balance (≤3)</span><span class="sc-val" id="s-low" style="color:#EF4444">—</span></div>
+        </div>
+
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-umbrella-beach" style="color:var(--gold)"></i> Leave Balance</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="last-updated" style="font-size:11px;color:var(--muted);"></span>
+              <button class="btn btn-ghost btn-sm" id="sync-btn" onclick="syncFromSchedule()">
+                <i class="fas fa-sync-alt"></i> Sync from Schedule
+              </button>
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="leave-table">
+                <thead>
+                  <tr>
+                    <th rowspan="2" style="text-align:left;vertical-align:middle;">Agent</th>
+                    <th rowspan="2" style="vertical-align:middle;">Entitlement</th>
+                    <th rowspan="2" style="vertical-align:middle;">Carry Over</th>
+                    <th colspan="12" style="text-align:center;background:rgba(212,175,55,0.06);border-bottom:1px solid var(--border);color:var(--gold);">Monthly Used Days</th>
+                    <th rowspan="2" style="vertical-align:middle;color:var(--gold);">Total Used</th>
+                    <th rowspan="2" style="vertical-align:middle;">Remaining</th>
+                    <th rowspan="2" style="vertical-align:middle;"></th>
+                  </tr>
+                  <tr class="month-header-group">
+                    <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th>
+                    <th>May</th><th>Jun</th><th>Jul</th><th>Aug</th>
+                    <th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                  </tr>
+                </thead>
+                <tbody id="leave-tbody">
+                  <tr><td colspan="17"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Annual Balance -->
+      <div id="tab-summary" style="display:none;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-umbrella-beach" style="color:var(--gold)"></i> Annual Balance</div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th><th>Entitlement</th><th>Carry Over</th>
+                    <th>Total Used</th><th>Remaining</th>
+                  </tr>
+                </thead>
+                <tbody id="summary-tbody">
+                  <tr><td colspan="5"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+let leaveData  = [];
+let currentTab = 'balance';
+
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-balance').style.display = tab==='balance' ? 'block' : 'none';
+  document.getElementById('tab-summary').style.display = tab==='summary' ? 'block' : 'none';
+  if (tab==='summary') renderAnnualSummary();
+}
+
+async function loadData() {
+  const year  = document.getElementById('year-select').value;
+  const tbody = document.getElementById('leave-tbody');
+  tbody.innerHTML = '<tr><td colspan="17"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const { data: agents } = await db.from('agents')
+      .select('id, formal_name').eq('status','Active').order('formal_name');
+    const { data: leaves } = await db.from('annual_leave')
+      .select('*').eq('year', parseInt(year));
+
+    leaveData = (agents || []).map(a => {
+      const leave = (leaves || []).find(l => l.agent_id === a.id) || {};
+      return { ...leave, agent_id: a.id, formal_name: a.formal_name, year: parseInt(year) };
+    });
+
+    // calculate andsave total_used and remaining auto
+    await autoSync();
+
+    renderTable();
+    renderSummary();
+    if (currentTab === 'summary') renderAnnualSummary();
+    document.getElementById('last-updated').innerText = 'Updated: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="17"><div class="empty-state"><span class="empty-icon">❌</span>Failed to load</div></td></tr>';
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// auto-calculate and save without user pressing anything
+
+// ── Sync from Schedule (Annual + Casual) ──
+async function syncFromSchedule() {
+  const year      = parseInt(document.getElementById('year-select').value);
+  const yearStart = year + '-01-01';
+  const yearEnd   = year + '-12-31';
+  const btn       = document.getElementById('sync-btn');
+  btn.disabled    = true;
+  btn.innerHTML   = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+
+  try {
+    const { data: agents } = await db.from('agents').select('id,formal_name').eq('status','Active');
+    const { data: leaves } = await db.from('schedule')
+      .select('agent_id,shift_date')
+      .in('day_type', ['Annual','Casual'])
+      .gte('shift_date', yearStart)
+      .lte('shift_date', yearEnd);
+
+    const { data: annualRecords } = await db.from('annual_leave').select('*').eq('year', year);
+
+    const COLS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+    // Build map: agent_id → { jan: count, feb: count, ... }
+    const map = {};
+    (leaves || []).forEach(l => {
+      const month = new Date(l.shift_date + 'T00:00:00').getMonth();
+      if (!map[l.agent_id]) map[l.agent_id] = {};
+      map[l.agent_id][COLS[month]] = (map[l.agent_id][COLS[month]] || 0) + 1;
+    });
+
+    let updated = 0;
+    for (const agent of (agents || [])) {
+      const agentMonths  = map[agent.id] || {};
+      const record       = (annualRecords || []).find(r => r.agent_id === agent.id);
+      const updates      = {};
+      COLS.forEach(m => { updates['used_' + m] = agentMonths[m] || 0; });
+      updates.total_used = COLS.reduce((s, m) => s + (agentMonths[m] || 0), 0);
+
+      if (record) {
+        updates.remaining  = (record.entitlement + record.carry_over) - updates.total_used;
+        updates.updated_at = new Date().toISOString();
+        await db.from('annual_leave').update(updates).eq('id', record.id);
+      } else {
+        await db.from('annual_leave').insert({
+          agent_id: agent.id, agent_name: agent.formal_name, year,
+          entitlement: 21, carry_over: 0,
+          ...updates,
+          remaining: 21 - updates.total_used,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      }
+      updated++;
+    }
+
+    logAudit({ module: 'Annual Leave', action: 'UPDATE', targetTable: 'annual_leave',
+      description: `Synced leave balance from schedule for ${updated} agent(s) (year ${year})` });
+    showToast('Synced ' + updated + ' agents from schedule ✅', 'success');
+    loadData();
+  } catch(e) {
+    showToast('Sync failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled   = false;
+    btn.innerHTML  = '<i class="fas fa-sync-alt"></i> Sync from Schedule';
+  }
+}
+
+async function autoSync() {
+  for (const r of leaveData) {
+    const total_used = MONTHS.reduce((s, m) => s + (r['used_' + m] || 0), 0);
+    const remaining  = (r.entitlement || 0) + (r.carry_over || 0) - total_used;
+    
+    if (r.id) {
+      // update
+      await db.from('annual_leave').update({
+        total_used,
+        remaining,
+        updated_at: new Date().toISOString()
+      }).eq('id', r.id);
+    } else {
+      // insert if no record exists
+      await db.from('annual_leave').insert({
+        agent_id: r.agent_id,
+        agent_name: r.formal_name,
+        year: r.year,
+        entitlement: 21,
+        carry_over: 0,
+        total_used,
+        remaining,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+    r.total_used = total_used;
+    r.remaining  = remaining;
+  }
+}
+  
+function renderTable() {
+  const tbody = document.getElementById('leave-tbody');
+  if (!leaveData.length) {
+    tbody.innerHTML = '<tr><td colspan="17"><div class="empty-state"><span class="empty-icon">📭</span>No data found</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = leaveData.map((r, i) => {
+    const entitlement = r.entitlement || 0;
+    const carry_over  = r.carry_over  || 0;
+    const total_used  = MONTHS.reduce((s, m) => s + (r['used_' + m] || 0), 0);
+    const remaining   = entitlement + carry_over - total_used;
+    const remClass    = remaining<=3?'remaining-low':remaining<=7?'remaining-warn':'remaining-ok';
+    const monthCells  = MONTHS.map(m => {
+      const val = r['used_' + m] || 0;
+      return '<td><span class="month-val '+(val===0?'zero':'')+'">'+( val===0?'—':val)+'</span></td>';
+    }).join('');
+    return '<tr id="row-'+i+'">' +
+      '<td><div style="display:flex;align-items:center;gap:8px;">' +
+        '<div class="agent-avatar" style="width:28px;height:28px;font-size:10px;">'+initials(r.formal_name)+'</div>' +
+        '<span style="font-weight:700;">'+r.formal_name+'</span>' +
+      '</div></td>' +
+      '<td><input class="editable-input" type="number" id="ent-'+i+'" value="'+entitlement+'" min="0" max="60" onchange="saveEntCo('+i+')"></td>' +
+      '<td><input class="editable-input" type="number" id="co-'+i+'" value="'+carry_over+'" min="0" max="60" onchange="saveEntCo('+i+')"></td>' +
+      monthCells +
+      '<td><span class="total-used-val" id="total-'+i+'">'+total_used+'</span></td>' +
+      '<td><span class="remaining-badge '+remClass+'" id="rem-'+i+'">'+remaining+'</span></td>' +
+      '<td></td>' +
+    '</tr>';
+  }).join('');
+}
+
+// when Entitlement or Carry Over changes — auto save
+async function saveEntCo(i) {
+  const r   = leaveData[i];
+  if (!r.id) return;
+  const ent        = parseInt(document.getElementById('ent-'+i).value)||0;
+  const co         = parseInt(document.getElementById('co-'+i).value)||0;
+  const total_used = MONTHS.reduce((s,m) => s+(r['used_'+m]||0), 0);
+  const remaining  = ent + co - total_used;
+  const remClass   = remaining<=3?'remaining-low':remaining<=7?'remaining-warn':'remaining-ok';
+
+  const remEl = document.getElementById('rem-'+i);
+  if (remEl) { remEl.className='remaining-badge '+remClass; remEl.innerText=remaining; }
+
+  try {
+    const _old = { entitlement: r.entitlement, carry_over: r.carry_over };
+    await db.from('annual_leave').update({
+      entitlement: ent, carry_over: co,
+      total_used, remaining,
+      updated_at: new Date().toISOString()
+    }).eq('id', r.id);
+    if (_old.entitlement !== ent || _old.carry_over !== co) {
+      logAudit({ module: 'Annual Leave', action: 'UPDATE', targetTable: 'annual_leave', targetId: r.id,
+        description: `Edited leave for ${r.agent_name || r.formal_name}: entitlement ${_old.entitlement} → ${ent}, carry-over ${_old.carry_over} → ${co} (remaining: ${remaining})`,
+        oldValue: _old, newValue: { entitlement: ent, carry_over: co } });
+    }
+
+    leaveData[i].entitlement = ent;
+    leaveData[i].carry_over  = co;
+    leaveData[i].total_used  = total_used;
+    leaveData[i].remaining   = remaining;
+
+    renderSummary();
+    showToast(r.formal_name+' updated ✅','success');
+  } catch(e) {
+    showToast('Failed: '+e.message,'error');
+  }
+}
+
+function renderAnnualSummary() {
+  const tbody = document.getElementById('summary-tbody');
+  if (!leaveData.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="empty-icon">📭</span>No data</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = leaveData.map(r => {
+    const totalUsed = MONTHS.reduce((s,m) => s+(r['used_'+m]||0), 0);
+    const remaining = (r.entitlement||0) + (r.carry_over||0) - totalUsed;
+    const remClass  = remaining<=3?'badge-danger':remaining<=7?'badge-warning':'badge-success';
+    return '<tr>' +
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">'+initials(r.formal_name)+'</div><span style="font-weight:700;">'+r.formal_name+'</span></div></td>' +
+      '<td style="font-weight:700;">'+(r.entitlement||0)+' days</td>' +
+      '<td style="font-weight:700;">'+(r.carry_over||0)+' days</td>' +
+      '<td style="font-weight:800;color:var(--gold);">'+totalUsed+' days</td>' +
+      '<td><span class="badge '+remClass+'">'+remaining+' days</span></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function renderSummary() {
+  const totalAgents      = leaveData.length;
+  const totalEntitlement = leaveData.reduce((s,r) => s+(r.entitlement||0)+(r.carry_over||0), 0);
+  const totalUsed        = leaveData.reduce((s,r) => s+MONTHS.reduce((ms,m) => ms+(r['used_'+m]||0), 0), 0);
+  const totalRemaining   = leaveData.reduce((s,r) => {
+    const used = MONTHS.reduce((ms,m) => ms+(r['used_'+m]||0), 0);
+    return s + ((r.entitlement||0)+(r.carry_over||0)-used);
+  }, 0);
+  const lowBalance = leaveData.filter(r => {
+    const used = MONTHS.reduce((ms,m) => ms+(r['used_'+m]||0), 0);
+    return ((r.entitlement||0)+(r.carry_over||0)-used) <= 3;
+  }).length;
+
+  document.getElementById('s-agents').innerText      = totalAgents;
+  document.getElementById('s-entitlement').innerText = totalEntitlement;
+  document.getElementById('s-used').innerText        = totalUsed;
+  document.getElementById('s-remaining').innerText   = totalRemaining;
+  document.getElementById('s-low').innerText         = lowBalance;
+}
+
+loadData();
+</script>
+</body>
+</html>

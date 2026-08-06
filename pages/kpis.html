@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — KPIs</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.kpi-full-table { width:100%; border-collapse:collapse; font-size:12px; }
+.kpi-full-table th {
+  padding:10px 10px; background:var(--surface2);
+  color:var(--muted); font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);
+  text-align:center; white-space:nowrap;
+}
+.kpi-full-table th.agent-col { text-align:left; min-width:140px; }
+.kpi-full-table td {
+  padding:10px 10px; border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);
+  text-align:center; vertical-align:middle; font-size:12px;
+}
+.kpi-full-table td.agent-col { text-align:left; }
+.kpi-full-table tr:last-child td { border-bottom:none; }
+.kpi-full-table tbody tr:hover td { background:rgba(212,175,55,0.03); }
+.th-group  { background:rgba(212,175,55,0.1)!important; color:var(--gold)!important; border-bottom:2px solid var(--gold)!important; }
+.th-annual { background:rgba(139,92,246,0.1)!important; color:#8B5CF6!important; }
+.conf-high { color:#10B981; font-weight:800; }
+.conf-mid  { color:#F59E0B; font-weight:800; }
+.conf-low  { color:#EF4444; font-weight:800; }
+.editable-cell {
+  width:75px; padding:4px 6px;
+  background:var(--surface2); border:1.5px solid var(--border);
+  border-radius:6px; color:var(--text); font-size:11px;
+  text-align:center; font-family:'Plus Jakarta Sans',sans-serif;
+  outline:none; transition:all 0.2s;
+}
+.editable-cell:focus { border-color:var(--gold); box-shadow:0 0 0 2px rgba(212,175,55,0.15); }
+
+/* Annual Balance Table */
+.annual-bal-table { width:100%; border-collapse:collapse; font-size:12px; }
+.annual-bal-table th {
+  padding:10px 14px; background:var(--surface2);
+  color:var(--muted); font-size:10px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  border-bottom:1px solid var(--border); text-align:center;
+}
+.annual-bal-table th:first-child { text-align:left; }
+.annual-bal-table td {
+  padding:12px 14px; border-bottom:1px solid var(--border);
+  text-align:center; vertical-align:middle; font-size:13px;
+}
+.annual-bal-table td:first-child { text-align:left; }
+.annual-bal-table tr:last-child td { border-bottom:none; }
+.annual-bal-table tbody tr:hover td { background:rgba(212,175,55,0.02); }
+</style>
+</head>
+<body>
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">KPIs</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Performance Management</div>
+      </div>
+      <div class="topbar-right">
+        <select id="month-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        </select>
+        <select id="year-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="2026">2026</option><option value="2025">2025</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="loadAll()"><i class="fas fa-sync-alt"></i></button>
+        <button class="btn btn-success" id="save-all-btn" onclick="handleSaveAll()"><i class="fas fa-save"></i> Save All</button>
+        <button class="btn btn-primary" onclick="openSendPanel()"><i class="fas fa-paper-plane"></i> Send Report</button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchTab('kpi',this)">📊 KPI Table</button>
+        <button class="tab-btn" onclick="switchTab('leaves',this)">🏖️ Leaves & Pay</button>
+        <button class="tab-btn" onclick="switchTab('annual',this)">📅 Annual Leave</button>
+        <button class="tab-btn" onclick="switchTab('annualbal',this)">🏖️ Annual Balance</button>
+      </div>
+
+      <!-- KPI TABLE -->
+      <div id="tab-kpi">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-table" style="color:var(--gold)"></i><span id="kpi-title">KPI Report</span></div>
+            <div style="font-size:11px;color:var(--muted);"><i class="fas fa-info-circle"></i> Edit cells directly then Save All</div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="kpi-full-table">
+                <thead>
+                  <tr>
+                    <th class="agent-col" rowspan="2">Agent</th>
+                    <th class="th-group" colspan="7">📊 Performance</th>
+                    <th class="th-group" colspan="1" style="background:rgba(245,158,11,0.1)!important;color:#F59E0B!important;">⏱ Exceptions</th>
+                    <th class="th-group" colspan="1" style="background:rgba(239,68,68,0.1)!important;color:#EF4444!important;">🎯 Adherence</th>
+                    <th class="th-group" colspan="1" style="background:rgba(236,72,153,0.1)!important;color:#EC4899!important;">⭐ Quality</th>
+                    <th class="th-annual" colspan="3">🏖️ Annual</th>
+                  </tr>
+                  <tr>
+                    <th>Conformance</th><th>Missing Time</th><th>AHT <span style="font-size:9px;opacity:.6;">(IB)</span></th>
+                    <th title="Total Calls">📊 Total</th><th title="Inbound Calls">📥 IB</th><th title="Outbound Calls">📤 OB</th><th>Net Missing</th><th>Excuses</th>
+                    <th>Deviations</th><th>Score</th>
+                    <th class="th-annual">Remaining</th><th class="th-annual">Used MTD</th><th class="th-annual">Used YTD</th>
+                  </tr>
+                </thead>
+                <tbody id="kpi-tbody">
+                  <tr><td colspan="12"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEAVES & PAY -->
+      <div id="tab-leaves" style="display:none;">
+        <div class="section-card fade-up" style="margin-bottom:16px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-plus-circle" style="color:var(--gold)"></i> Add Leave / Pay Entry</div>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Agent <span class="req">*</span></label>
+                <select id="l-agent" class="form-input" onchange="onAgentSelect()"><option value="">Select Agent...</option></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Leave Type <span class="req">*</span></label>
+                <select id="l-type" class="form-input" onchange="onTypeSelect()">
+                  <option value="">Select Type...</option>
+                  <option value="Annual">🏖️ Annual Leave</option>
+                  <option value="Sick">🤒 Sick Leave</option>
+                  <option value="Casual">💼 Casual Leave</option>
+                  <option value="PH">🎉 Public Holiday (Double Pay)</option>
+                  <option value="Double Pay">💰 Double Pay</option>
+                  <option value="Overtime">⏰ Overtime</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Date <span class="req">*</span></label>
+                <input type="date" id="l-date" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Days</label>
+                <input type="number" id="l-days" class="form-input" value="1" min="0.5" step="0.5" oninput="calcDoublePay()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Hours (Overtime)</label>
+                <input type="number" id="l-hours" class="form-input" value="0" min="0" step="0.5">
+              </div>
+              <div class="form-group" id="salary-group" style="display:none;">
+                <label class="form-label">Monthly Salary (EGP)</label>
+                <input type="number" id="l-salary" class="form-input" placeholder="e.g. 8000" oninput="calcDoublePay()">
+              </div>
+              <div class="form-group form-full">
+                <label class="form-label">Note</label>
+                <input type="text" id="l-note" class="form-input" placeholder="Optional...">
+              </div>
+            </div>
+            <div id="double-pay-calc" style="display:none;margin-top:12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:12px;padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:#10B981;margin-bottom:8px;"><i class="fas fa-calculator"></i> Double Pay Calculator</div>
+              <div style="font-size:13px;color:var(--text);">
+                Daily Rate = Salary ÷ 30 × 2 = <strong id="daily-rate">—</strong><br>
+                Total = Days × Daily Rate = <strong id="total-double-pay" style="color:#10B981;">—</strong>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+              <button class="btn btn-primary" onclick="addLeave()"><i class="fas fa-plus"></i> Add Entry</button>
+            </div>
+          </div>
+        </div>
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-list" style="color:var(--gold)"></i> Leaves & Pay</div>
+            <span style="font-size:11px;color:var(--muted);" id="leaves-period"></span>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr><th>Agent</th><th>Type</th><th>Date</th><th>Days</th><th>Hours</th><th>Salary</th><th>Double Pay</th><th>Note</th><th>Del</th></tr>
+                </thead>
+                <tbody id="leaves-tbody">
+                  <tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANNUAL LEAVE -->
+      <div id="tab-annual" style="display:none;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-calendar-alt" style="color:var(--gold)"></i> Annual Leave — <span id="annual-year-label"></span></div>
+            <button class="btn btn-success btn-sm" onclick="saveAllAnnual()"><i class="fas fa-save"></i> Save All</button>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th><th>Entitlement</th><th>Carry Over</th>
+                    <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
+                    <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                    <th>Total Used</th><th>Remaining</th><th>Save</th>
+                  </tr>
+                </thead>
+                <tbody id="annual-tbody">
+                  <tr><td colspan="18"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANNUAL BALANCE -->
+      <div id="tab-annualbal" style="display:none;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-umbrella-beach" style="color:var(--gold)"></i> Annual Balance — <span id="annualbal-year-label"></span></div>
+            <button class="btn btn-ghost btn-sm" onclick="loadAnnualBalance()"><i class="fas fa-sync-alt"></i> Refresh</button>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="annual-bal-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Entitlement</th>
+                    <th>Carry Over</th>
+                    <th>Total Used</th>
+                    <th>Remaining</th>
+                  </tr>
+                </thead>
+                <tbody id="annualbal-tbody">
+                  <tr><td colspan="5"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Send Report</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+
+function copyKPIReport() {
+  const month = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year  = document.getElementById('year-filter').value;
+  const rows  = document.querySelectorAll('#kpi-tbody tr');
+  let html = `
+  <div style="font-family:Arial,sans-serif;font-size:13px;">
+    <p>Hello team,</p>
+    <p>Kindly find your <b>MTD performance</b> for <b>${month} ${year}</b>:</p>
+    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;">
+      <thead>
+        <tr style="background:#1E5E9E;color:white;text-align:center;">
+          <th>Name</th><th>Conf%</th><th>Missing Time</th><th>AHT (IB)</th><th>📊 Total</th><th>📥 IB</th><th>📤 OB</th>
+          <th>Net Missing</th><th>Excuses</th><th>Adherence</th><th>Quality</th>
+          <th>Remaining Annual</th><th>Used MTD</th><th>Used YTD</th>
+        </tr>
+      </thead>
+      <tbody>`;
+  rows.forEach((row, i) => {
+    const cells = row.querySelectorAll('td');
+    if (!cells.length) return;
+    const bg          = i % 2 === 0 ? '#ffffff' : '#f5f5f5';
+    const name        = cells[0]?.innerText?.trim().replace(/^[A-Z]{2}\s+/, '') || '—';
+    const conformance = cells[1]?.innerText?.trim() || '—';
+    const missing     = cells[2]?.innerText?.trim() || '—';
+    const aht         = cells[3]?.innerText?.trim() || '—';
+    const calls       = cells[4]?.innerText?.trim() || '—';  // Total
+    const inbound     = cells[5]?.innerText?.trim() || '—';  // IB
+    const outbound    = cells[6]?.innerText?.trim() || '—';  // OB
+    const netMissing  = cells[7]?.innerText?.trim() || '—';
+    const excuses     = cells[8]?.innerText?.trim() || '—';
+    const adherence   = cells[9]?.innerText?.trim() || '—';
+    const quality     = cells[10]?.querySelector('input')?.value || '—';
+    const remaining   = cells[11]?.innerText?.trim() || '—';
+    const usedMTD     = cells[12]?.innerText?.trim() || '—';
+    const usedYTD     = cells[13]?.innerText?.trim() || '—';
+    const confNum     = parseFloat(conformance) || 0;
+    const confColor   = confNum >= 98 ? '#d4edda' : confNum >= 90 ? '#fff3cd' : '#f8d7da';
+    const missColor   = missing === 'Full Time' ? '#d4edda' : '#f8d7da';
+    const netColor    = netMissing === 'Full Time' ? '#d4edda' : '#f8d7da';
+    html += `
+      <tr style="background:${bg};text-align:center;">
+        <td style="text-align:left;font-weight:700;">${name}</td>
+        <td style="background:${confColor};font-weight:700;">${conformance}</td>
+        <td style="background:${missColor};font-weight:700;">${missing}</td>
+        <td style="background:#fff3cd;font-weight:700;">${aht}</td>
+        <td style="font-weight:700;">${calls}</td>
+        <td style="color:#1D4ED8;font-weight:700;">${inbound}</td>
+        <td style="color:#6D28D9;font-weight:700;">${outbound}</td>
+        <td style="background:${netColor};font-weight:700;">${netMissing}</td>
+        <td>${excuses}</td>
+        <td style="font-weight:700;color:${adherence==='Clean'?'#28a745':'#dc3545'}">${adherence}</td>
+        <td style="font-weight:700;">${quality}</td>
+        <td style="background:#d4edda;">${remaining}</td>
+        <td>${usedMTD}</td>
+        <td>${usedYTD}</td>
+      </tr>`;
+  });
+  html += `
+      </tbody>
+    </table>
+    <br>
+    <p>Best Regards,<br><b>Nations of Sky</b></p>
+  </div>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const data = new ClipboardItem({ 'text/html': blob });
+  navigator.clipboard.write([data]).then(() => {
+    showToast('📋 Report Copied! Paste it directly in Outlook', 'success');
+    closePanel();
+  }).catch(() => {
+    showToast('Copy Failed! Try on Chrome/Edge', 'error');
+  });
+}
+
+const now = new Date();
+document.getElementById('month-filter').value = String(now.getMonth()+1).padStart(2,'0');
+
+const MONTH_NAMES  = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_SHORT = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+let allAgents   = [];
+let kpiData     = [];
+let leavesData  = [];
+let annualData  = [];
+let editedKPIs  = {};
+let annualEdits = {};
+let currentTab  = 'kpi';
+
+async function init() {
+  const { data } = await db.from('agents').select('id,formal_name,email').eq('status','Active').order('formal_name');
+  allAgents = data || [];
+  const sel = document.getElementById('l-agent');
+  allAgents.forEach(a => sel.add(new Option(a.formal_name, a.id)));
+  await loadAll();
+}
+
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['kpi','leaves','annual','annualbal'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none';
+  });
+  document.getElementById('save-all-btn').style.display = ['kpi','annual'].includes(tab) ? 'flex' : 'none';
+  if (tab==='leaves')     loadLeaves();
+  if (tab==='annual')     loadAnnual();
+  if (tab==='annualbal')  loadAnnualBalance();
+}
+
+function handleSaveAll() {
+  if (currentTab === 'annual') saveAllAnnual();
+  else saveAll();
+}
+
+async function loadAll() {
+  const month = document.getElementById('month-filter').value;
+  const year  = parseInt(document.getElementById('year-filter').value);
+  document.getElementById('kpi-title').innerText           = 'KPI Report — '+MONTH_NAMES[parseInt(month)]+' '+year;
+  document.getElementById('annual-year-label').innerText    = year;
+  document.getElementById('annualbal-year-label').innerText = year;
+  editedKPIs = {};
+  await loadKPIs(MONTH_NAMES[parseInt(month)], year);
+}
+
+async function loadKPIs(monthName, year) {
+  const tbody = document.getElementById('kpi-tbody');
+  tbody.innerHTML = '<tr><td colspan="10"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const month    = document.getElementById('month-filter').value;
+    const dateFrom = year+'-'+month+'-01';
+    const lastDay  = new Date(year, parseInt(month), 0).getDate();
+    const dateTo   = year+'-'+month+'-'+String(lastDay).padStart(2,'0');
+
+    // UPDATED QUERY: Added deviation_minutes
+    const [perfRes, excusesRes, annualRes, qualityRes, adherenceRes, xcallyRes] = await Promise.all([
+      db.from('daily_performance').select('agent_id,agent_name,conformance,missing_sec,active_sec,target_sec,avg_aht,calls').gte('perf_date',dateFrom).lte('perf_date',dateTo),
+      db.from('excuses').select('*').eq('status','Approved').gte('excuse_date',dateFrom).lte('excuse_date',dateTo),
+      db.from('annual_leave').select('*').eq('year',year),
+      db.from('quality_scores').select('*').eq('month',monthName).eq('year',year),
+      // CHANGED: fetching deviation_minutes + deviation_date for adherence rate calc
+      db.from('adherence_deviations').select('agent_id,is_waived,deviation_minutes,deviation_date').gte('deviation_date',dateFrom).lte('deviation_date',dateTo),
+      db.from('xcally_calls_logs').select('agent_name,call_source,talk_duration').gte('call_date',dateFrom).lte('call_date',dateTo),
+    ]);
+
+    const perfData      = perfRes.data      || [];
+    const excusesData   = excusesRes.data   || [];
+    const annData       = annualRes.data    || [];
+    const qualityData   = qualityRes.data   || [];
+    const adherenceData = adherenceRes.data || [];
+    kpiData = qualityData;
+
+    // xcallyMap: agent → { obCount, ibTalkSec, ibCount }
+    const norm = s => (s||'').toLowerCase().replace(/\s+/g,'');
+    const xcallyMap = {};
+    (xcallyRes.data || []).forEach(r => {
+      const k = norm(r.agent_name);
+      if (!xcallyMap[k]) xcallyMap[k] = { obCount:0, ibCount:0, ibTalkSec:0 };
+      if (r.call_source === 'outbound') {
+        xcallyMap[k].obCount++;
+      } else if (r.call_source === 'inbound') {
+        xcallyMap[k].ibCount++;
+        if ((r.talk_duration||0) > 0) xcallyMap[k].ibTalkSec += r.talk_duration;
+      }
+    });
+
+    const agentKPIs = [];
+    tbody.innerHTML = allAgents.map(agent => {
+      const agentPerf = perfData.filter(p => p.agent_id === agent.id);
+      let conformance = '—', missingTime = '—', avgAHT = '—', totalCalls = 0;
+
+      // IB = daily_performance.calls (الرقم الصح من الـ import)
+      // OB = xcally_calls_logs outbound
+      // AHT = xcally_calls_logs inbound talk time فقط
+      const xc = xcallyMap[norm(agent.formal_name)] || xcallyMap[norm(agent.xcally_name)] || { obCount:0, ibCount:0, ibTalkSec:0 };
+      avgAHT = xc.ibCount > 0 ? secToTime(Math.round(xc.ibTalkSec / xc.ibCount)) : '—';
+
+      if (agentPerf.length) {
+        // 1. Totals from daily_performance
+        const totalMissingSec = agentPerf.reduce((s,p)=>s+(p.missing_sec||0),0);
+        const totalExtraSec   = agentPerf.reduce((s,p)=>s+Math.max(0,(p.active_sec||0)-(p.target_sec||0)),0);
+        const totalTargetSec  = agentPerf.reduce((s,p)=>s+(p.target_sec||0),0);
+
+        // 2. CALCULATE WAIVED SECONDS
+        const agentDeviations = adherenceData.filter(d => d.agent_id === agent.id);
+        let waivedMinutes = 0;
+        agentDeviations.forEach(d => {
+          if (d.is_waived) waivedMinutes += (d.deviation_minutes || 0);
+        });
+        const waivedSeconds = waivedMinutes * 60;
+
+        // 3. NET MISSING: (Missing - Extra) - Waived
+        const netMissingSec = Math.max(0, (totalMissingSec - totalExtraSec) - waivedSeconds);
+        missingTime = netMissingSec <= 300 ? 'Full Time' : secToTime(netMissingSec);
+
+        // 4. CONFORMANCE % — recalculated with waived seconds factored in
+        // Formula: (target - max(0, missing - waived)) / target * 100
+        if (totalTargetSec > 0) {
+          const effectiveMissingSec = Math.max(0, totalMissingSec - waivedSeconds);
+          const adjustedConf = ((totalTargetSec - effectiveMissingSec) / totalTargetSec) * 100;
+          conformance = Math.min(100, adjustedConf).toFixed(1) + '%';
+        } else {
+          // Fallback: use raw average if no target data
+          const avgConf = agentPerf.reduce((s,p)=>s+parseFloat(p.conformance||0),0)/agentPerf.length;
+          conformance = avgConf.toFixed(1)+'%';
+        }
+
+        const ahtArr = agentPerf.filter(p=>p.avg_aht>0);
+        totalCalls = agentPerf.reduce((s,p)=>s+(p.calls||0),0);
+      }
+
+      // Excuses for display only — calculation done in xCALLY
+      const agentExcuses = excusesData.filter(e=>e.agent_id===agent.id);
+      const excHours     = agentExcuses.length * 2;
+      const excStr       = excHours > 0 ? excHours+' Hours' : 'None';
+
+      // Net Missing = missingTime directly (excuse deducted in xCALLY)
+      // NOTE: Now Net Missing reflects the Waived Deviations because missingTime does.
+      const netMissing = missingTime;
+
+      const ann        = annData.find(a=>a.agent_id===agent.id)||{};
+      const annLeft    = ann.remaining !== undefined ? ann.remaining : '—';
+      const monthKey   = 'used_'+MONTHS_SHORT[parseInt(month)-1];
+      const annUsedMTD = ann[monthKey]||0;
+      const quality    = qualityData.find(q=>q.agent_id===agent.id);
+      const confNum    = parseFloat(conformance)||0;
+      const confColor  = confNum>=98?'#10B981':confNum>=90?'#F59E0B':'#EF4444';
+
+      agentKPIs.push({ agent_id: agent.id, agent_name: agent.formal_name || '', month: monthName, year, conformance, missing_time: missingTime, updated_at: new Date().toISOString() });
+
+      return '<tr>'+
+        '<td class="agent-col"><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:28px;height:28px;font-size:10px;">'+initials(agent.formal_name)+'</div><span style="font-weight:700;">'+agent.formal_name+'</span></div></td>'+
+        '<td style="font-weight:800;color:'+confColor+';">'+conformance+'</td>'+
+        '<td style="font-family:monospace;font-size:11px;color:'+(missingTime==='Full Time'?'#10B981':'#EF4444')+';font-weight:700;">'+missingTime+'</td>'+
+        '<td style="font-family:monospace;font-size:11px;">'+avgAHT+'</td>'+
+        '<td style="font-weight:700;color:var(--muted);" title="Total Calls">'+(totalCalls||'—')+'</td>'+
+        '<td style="font-weight:700;color:#60A5FA;" title="Inbound Calls">'+((totalCalls - xc.obCount)||'—')+'</td>'+
+        '<td style="font-weight:700;color:#A78BFA;" title="Outbound Calls">'+(xc.obCount||'—')+'</td>'+
+        '<td style="font-size:11px;color:'+(netMissing==='Full Time'?'#10B981':'#EF4444')+';font-weight:700;">'+netMissing+'</td>'+
+        '<td style="color:#F59E0B;font-weight:700;">'+excStr+'</td>'+
+        (function(){
+          // Adherence Rate = adherent days / total working days
+          // A "bad" day = has at least 1 active (non-waived) deviation
+          const workDays = agentPerf.length;
+          if (!workDays) return '<td style="color:var(--muted)">—</td>';
+          const activeDevs   = adherenceData.filter(d => d.agent_id === agent.id && !d.is_waived);
+          const badDays      = new Set(activeDevs.map(d => d.deviation_date)).size;
+          const adherentDays = Math.max(0, workDays - badDays);
+          const rate         = Math.round((adherentDays / workDays) * 100);
+          const pctColor     = rate === 100 ? '#10B981' : rate >= 80 ? '#F59E0B' : '#EF4444';
+          const tipText      = adherentDays + '/' + workDays + ' days adherent';
+          return '<td title="' + tipText + '" style="font-weight:800;color:' + pctColor + ';">' + rate + '%</td>';
+        })()+
+        '<td><input class="editable-cell" type="text" value="'+(quality?.score||'')+'" placeholder="—" onchange="markEdit(\''+agent.id+'\',\'score\',this.value)" style="color:var(--gold);font-weight:700;"></td>'+
+        '<td><span class="badge '+(typeof annLeft==='number'&&annLeft<=3?'badge-danger':'badge-success')+'">'+(typeof annLeft==='number'?annLeft+' days':annLeft)+'</span></td>'+
+        '<td style="font-weight:700;">'+annUsedMTD+' days</td>'+
+        '<td style="font-weight:700;color:var(--gold);">'+MONTHS_SHORT.reduce((s,m)=>s+(ann['used_'+m]||0),0)+' days</td>'+
+        '</tr>';
+    }).join('');
+
+    // ── حفظ النتايج في kpi_cache عشان الـ Agent Portal يقراها ──
+    if (agentKPIs.length) {
+      try {
+        await db.from('kpi_cache').upsert(agentKPIs, { onConflict: 'agent_id,month,year' });
+      } catch(e) { console.warn('KPI cache save failed:', e.message); }
+    }
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">❌</span>Failed: '+e.message+'</div></td></tr>';
+    showToast('Failed: '+e.message,'error');
+  }
+}
+
+function markEdit(agentId, field, value) {
+  if (!editedKPIs[agentId]) editedKPIs[agentId] = {};
+  editedKPIs[agentId][field] = value;
+}
+
+async function saveAll() {
+  const month = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year  = parseInt(document.getElementById('year-filter').value);
+  if (!Object.keys(editedKPIs).length) { showToast('No changes to save','info'); return; }
+  try {
+    for (const agentId of Object.keys(editedKPIs)) {
+      const agent    = allAgents.find(a=>a.id===agentId);
+      const fields   = editedKPIs[agentId];
+      const existing = kpiData.find(k=>k.agent_id===agentId);
+      const payload  = { agent_id:agentId, agent_name:agent?.formal_name||'', month, year, ...fields, updated_at:new Date().toISOString() };
+      if (existing) { await db.from('quality_scores').update(payload).eq('id',existing.id); }
+      else { payload.created_at=new Date().toISOString(); await db.from('quality_scores').insert(payload); }
+    }
+    showToast('Quality scores saved!','success');
+    editedKPIs = {};
+    loadAll();
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+async function loadLeaves() {
+  const month    = document.getElementById('month-filter').value;
+  const year     = parseInt(document.getElementById('year-filter').value);
+  const dateFrom = year+'-'+month+'-01';
+  const lastDay  = new Date(year,parseInt(month),0).getDate();
+  const dateTo   = year+'-'+month+'-'+String(lastDay).padStart(2,'0');
+  document.getElementById('leaves-period').innerText = MONTH_NAMES[parseInt(month)]+' '+year;
+  const tbody = document.getElementById('leaves-tbody');
+  tbody.innerHTML = '<tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const { data } = await db.from('leaves').select('*').gte('leave_date',dateFrom).lte('leave_date',dateTo).order('leave_date');
+    leavesData = data||[];
+    if (!leavesData.length) { tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><span class="empty-icon">📭</span>No entries</div></td></tr>'; return; }
+    const tc = {'Annual':'badge-purple','Sick':'badge-danger','Casual':'badge-warning','PH':'badge-info','Double Pay':'badge-success','Overtime':'badge-gold'};
+    tbody.innerHTML = leavesData.map(l =>
+      '<tr>'+
+      '<td style="font-weight:700;">'+l.agent_name+'</td>'+
+      '<td><span class="badge '+(tc[l.leave_type]||'badge-muted')+'">'+l.leave_type+'</span></td>'+
+      '<td style="font-size:12px;">'+formatDate(l.leave_date)+'</td>'+
+      '<td>'+(l.days||0)+'</td><td>'+(l.hours||0)+'</td>'+
+      '<td style="font-family:monospace;">'+(l.salary?'EGP '+Number(l.salary).toLocaleString():'—')+'</td>'+
+      '<td style="color:#10B981;font-weight:700;">'+(l.double_pay_amount?'EGP '+Number(l.double_pay_amount).toLocaleString():'—')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);">'+(l.note||'—')+'</td>'+
+      '<td><button class="btn btn-danger btn-sm btn-icon" onclick="deleteLeave(\''+l.id+'\')"><i class="fas fa-trash"></i></button></td>'+
+      '</tr>'
+    ).join('');
+  } catch(e) { tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><span class="empty-icon">❌</span>Failed</div></td></tr>'; }
+}
+
+function onTypeSelect() {
+  const type = document.getElementById('l-type').value;
+  document.getElementById('salary-group').style.display    = ['PH','Double Pay','Overtime'].includes(type) ? 'block' : 'none';
+  document.getElementById('double-pay-calc').style.display = ['PH','Double Pay'].includes(type) ? 'block' : 'none';
+  calcDoublePay();
+}
+function onAgentSelect() { calcDoublePay(); }
+function calcDoublePay() {
+  const salary = parseFloat(document.getElementById('l-salary').value)||0;
+  const days   = parseFloat(document.getElementById('l-days').value)||1;
+  if (!salary) { document.getElementById('daily-rate').innerText='—'; document.getElementById('total-double-pay').innerText='—'; return; }
+  const dr = (salary/30)*2;
+  document.getElementById('daily-rate').innerText       = 'EGP '+dr.toFixed(2);
+  document.getElementById('total-double-pay').innerText = 'EGP '+(dr*days).toFixed(2);
+}
+
+async function addLeave() {
+  const agentId = document.getElementById('l-agent').value;
+  const type    = document.getElementById('l-type').value;
+  const date    = document.getElementById('l-date').value;
+  const days    = parseFloat(document.getElementById('l-days').value)||1;
+  const hours   = parseFloat(document.getElementById('l-hours').value)||0;
+  const salary  = parseFloat(document.getElementById('l-salary').value)||0;
+  const note    = document.getElementById('l-note').value.trim();
+  if (!agentId||!type||!date) { showToast('Please fill Agent, Type and Date','error'); return; }
+  const agent = allAgents.find(a=>a.id===agentId);
+  const month = document.getElementById('month-filter').value;
+  const year  = parseInt(document.getElementById('year-filter').value);
+  const dp    = ['PH','Double Pay'].includes(type)&&salary>0 ? (salary/30)*2*days : 0;
+  try {
+    const { error } = await db.from('leaves').insert({
+      agent_id:agentId, agent_name:agent?.formal_name||'', leave_type:type,
+      leave_date:date, days, hours, salary, double_pay_amount:dp,
+      note:note||null, month:MONTH_NAMES[parseInt(month)], year,
+      created_at:new Date().toISOString(), updated_at:new Date().toISOString(),
+    });
+    if (error) throw error;
+    showToast('Entry added!','success');
+    loadLeaves();
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+async function deleteLeave(id) {
+  openModal('Delete Entry','Delete this leave entry?', async () => {
+    await db.from('leaves').delete().eq('id',id);
+    showToast('Deleted!','warning');
+    loadLeaves();
+  });
+}
+
+async function loadAnnual() {
+  const year  = parseInt(document.getElementById('year-filter').value);
+  const tbody = document.getElementById('annual-tbody');
+  tbody.innerHTML = '<tr><td colspan="18"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const { data } = await db.from('annual_leave').select('*').eq('year',year);
+    annualData = data||[];
+    tbody.innerHTML = allAgents.map(agent => {
+      const a = annualData.find(x=>x.agent_id===agent.id)||{};
+      const totalUsed = MONTHS_SHORT.reduce((s,m)=>s+(a['used_'+m]||0),0);
+      const remaining = ((a.entitlement||21)+(a.carry_over||0))-totalUsed;
+      return '<tr>'+
+        '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:24px;height:24px;font-size:9px;">'+initials(agent.formal_name)+'</div><span style="font-weight:700;font-size:12px;">'+agent.formal_name+'</span></div></td>'+
+        '<td><input class="editable-cell" type="number" value="'+(a.entitlement||21)+'" style="width:50px;" onchange="markAnnual(\''+agent.id+'\',\'entitlement\',this.value,\''+(a.id||'')+'\','+year+')"></td>'+
+        '<td><input class="editable-cell" type="number" value="'+(a.carry_over||0)+'" style="width:50px;" onchange="markAnnual(\''+agent.id+'\',\'carry_over\',this.value,\''+(a.id||'')+'\','+year+')"></td>'+
+        MONTHS_SHORT.map(m=>'<td><input class="editable-cell" type="number" value="'+(a['used_'+m]||0)+'" style="width:40px;" onchange="markAnnual(\''+agent.id+'\',\'used_'+m+'\',this.value,\''+(a.id||'')+'\','+year+')"></td>').join('')+
+        '<td style="font-weight:700;color:'+(totalUsed>0?'#F59E0B':'var(--muted)')+';">'+totalUsed+'</td>'+
+        '<td><span class="badge '+(remaining<=3?'badge-danger':remaining<=7?'badge-warning':'badge-success')+'">'+remaining+' days</span></td>'+
+        '<td><button class="btn btn-ghost btn-sm btn-icon" onclick="saveAnnual(\''+agent.id+'\',\''+(a.id||'')+'\','+year+')" title="Save"><i class="fas fa-save"></i></button></td>'+
+        '</tr>';
+    }).join('');
+  } catch(e) { tbody.innerHTML='<tr><td colspan="18"><div class="empty-state"><span class="empty-icon">❌</span>Failed</div></td></tr>'; }
+}
+
+function markAnnual(agentId, field, value, recordId, year) {
+  if (!annualEdits[agentId]) annualEdits[agentId] = { _id:recordId, _year:year };
+  annualEdits[agentId][field] = parseFloat(value)||0;
+}
+
+async function saveAnnual(agentId, recordId, year) {
+  const agent = allAgents.find(a=>a.id===agentId);
+  const rows  = document.querySelectorAll('#annual-tbody tr');
+  let rowEl = null;
+  rows.forEach(r => { if (r.innerHTML.includes(agent.formal_name)) rowEl = r; });
+  const inputs = rowEl ? rowEl.querySelectorAll('input.editable-cell') : [];
+  const entitlement = parseFloat(inputs[0]?.value)||21;
+  const carry_over  = parseFloat(inputs[1]?.value)||0;
+  const monthVals   = {};
+  MONTHS_SHORT.forEach((m,i) => { monthVals['used_'+m] = parseFloat(inputs[i+2]?.value)||0; });
+  const totalUsed = Object.values(monthVals).reduce((s,v)=>s+v,0);
+  const remaining = (entitlement+carry_over)-totalUsed;
+  const payload = { entitlement, carry_over, ...monthVals, total_used:totalUsed, remaining, updated_at:new Date().toISOString() };
+  try {
+    if (recordId) { await db.from('annual_leave').update(payload).eq('id',recordId); }
+    else { await db.from('annual_leave').insert({ agent_id:agentId, agent_name:agent?.formal_name||'', year, ...payload, created_at:new Date().toISOString() }); }
+    showToast(agent?.formal_name+' — Remaining: '+remaining+' days','success');
+    loadAnnual();
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+async function saveAllAnnual() {
+  const year = parseInt(document.getElementById('year-filter').value);
+  const rows = document.querySelectorAll('#annual-tbody tr');
+  let saved  = 0;
+  for (const agent of allAgents) {
+    let rowEl = null;
+    rows.forEach(r => { if (r.innerHTML.includes(agent.formal_name)) rowEl = r; });
+    if (!rowEl) continue;
+    const inputs = rowEl.querySelectorAll('input.editable-cell');
+    const entitlement = parseFloat(inputs[0]?.value)||21;
+    const carry_over  = parseFloat(inputs[1]?.value)||0;
+    const monthVals   = {};
+    MONTHS_SHORT.forEach((m,i) => { monthVals['used_'+m] = parseFloat(inputs[i+2]?.value)||0; });
+    const existing  = annualData.find(a=>a.agent_id===agent.id);
+    const totalUsed = Object.values(monthVals).reduce((s,v)=>s+v,0);
+    const remaining = (entitlement+carry_over)-totalUsed;
+    const payload   = { entitlement, carry_over, ...monthVals, total_used:totalUsed, remaining, updated_at:new Date().toISOString() };
+    try {
+      if (existing) { await db.from('annual_leave').update(payload).eq('id',existing.id); }
+      else { await db.from('annual_leave').insert({ agent_id:agent.id, agent_name:agent.formal_name, year, ...payload, created_at:new Date().toISOString() }); }
+      saved++;
+    } catch(e) { console.error(e); }
+  }
+  showToast('Saved '+saved+' agents!','success');
+  loadAnnual();
+}
+
+async function loadAnnualBalance() {
+  const year  = parseInt(document.getElementById('year-filter').value);
+  const tbody = document.getElementById('annualbal-tbody');
+  document.getElementById('annualbal-year-label').innerText = year;
+  tbody.innerHTML = '<tr><td colspan="5"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  try {
+    const { data } = await db.from('annual_leave').select('*').eq('year',year);
+    if (!data || !data.length) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="empty-icon">📭</span>No data found</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = allAgents.map(agent => {
+      const a         = data.find(x=>x.agent_id===agent.id)||{};
+      const totalUsed = a.total_used !== undefined ? a.total_used : MONTHS_SHORT.reduce((s,m)=>s+(a['used_'+m]||0),0);
+      const remaining = a.remaining  !== undefined ? a.remaining  : ((a.entitlement||21)+(a.carry_over||0)-totalUsed);
+      const remClass  = remaining<=3?'badge-danger':remaining<=7?'badge-warning':'badge-success';
+      return '<tr>'+
+        '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:28px;height:28px;font-size:10px;">'+initials(agent.formal_name)+'</div><span style="font-weight:700;">'+agent.formal_name+'</span></div></td>'+
+        '<td style="font-weight:700;">'+(a.entitlement||21)+' days</td>'+
+        '<td style="font-weight:700;">'+(a.carry_over||0)+' days</td>'+
+        '<td style="font-weight:800;color:var(--gold);">'+totalUsed+' days</td>'+
+        '<td><span class="badge '+remClass+'">'+remaining+' days</span></td>'+
+        '</tr>';
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="empty-icon">❌</span>Failed</div></td></tr>';
+    showToast('Failed: '+e.message,'error');
+  }
+}
+
+function openSendPanel() {
+  const month = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year  = document.getElementById('year-filter').value;
+  document.getElementById('panel-title').innerText = 'Send KPI Report';
+  document.getElementById('panel-body').innerHTML =
+    '<div style="margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:12px;font-size:13px;color:var(--muted);">'+
+    '<i class="fas fa-info-circle" style="color:var(--gold);margin-right:6px;"></i>Report: <strong style="color:var(--text);">'+month+' '+year+'</strong></div>'+
+    '<div style="display:flex;flex-direction:column;gap:10px;">'+
+    '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;cursor:pointer;" onclick="sendToAll()">'+
+    '<div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:4px;"><i class="fas fa-users" style="color:var(--gold);margin-right:8px;"></i>Send to All Agents</div>'+
+    '<div style="font-size:12px;color:var(--muted);">Sends individual KPI to each agent email</div></div>'+
+    '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;">'+
+    '<div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:10px;"><i class="fas fa-user" style="color:#3B82F6;margin-right:8px;"></i>Send to One Agent</div>'+
+    '<div style="display:flex;gap:8px;">'+
+    '<select id="send-agent-sel" class="form-input" style="width:100%;margin-bottom:10px;"><option value="">Select...</option>'+
+      allAgents.map(a=>'<option value="'+a.id+'">'+a.formal_name+' — '+(a.email||'no email')+'</option>').join('')+
+    '</select><button class="btn btn-primary" style="width:100%;" onclick="sendToOne()"><i class="fas fa-paper-plane"></i> Send</button></div></div></div>'+
+    '<div style="margin-top:16px;padding:12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;font-size:12px;color:var(--muted);">'+
+    '<i class="fas fa-exclamation-triangle" style="color:var(--warning);margin-right:6px;"></i>Save All before sending!</div>';
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Close</button>
+    <button class="btn btn-primary" onclick="copyKPIReport()">
+      <i class="fas fa-copy"></i> Copy Report
+    </button>`;
+  openPanel();
+}
+
+function buildReportData() {
+  const rows = document.querySelectorAll('#kpi-tbody tr');
+  return allAgents.map((agent, i) => {
+    const row = rows[i];
+    if (!row) return { agentId: agent.id, agentName: agent.formal_name, email: agent.email, conformance:'—', missing:'—', aht:'—', calls:'—', quality:'—' };
+    const cells = row.querySelectorAll('td');
+    return {
+      agentId:     agent.id,
+      agentName:   agent.formal_name,
+      email:       agent.email,
+      conformance: cells[1]?.innerText?.trim() || '—',
+      missing:     cells[2]?.innerText?.trim() || '—',
+      aht:         cells[3]?.innerText?.trim() || '—',
+      calls:       cells[4]?.innerText?.trim() || '—',
+      inbound:     cells[5]?.innerText?.trim() || '—',
+      outbound:    cells[6]?.innerText?.trim() || '—',
+      quality:     cells[10]?.querySelector('input')?.value || '—',
+    };
+  });
+}
+
+async function sendToAll() {
+  const month   = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year    = document.getElementById('year-filter').value;
+  const reports = buildReportData();
+
+  const allEmails = reports
+    .filter(r => r.email && r.email.trim() !== '' && r.email !== 'no email')
+    .map(r => r.email.trim())
+    .join(';');
+
+  if (!allEmails) { showToast('No valid emails found!', 'error'); return; }
+
+  // جيب CC من المانجيرز والأدمن من جدول agents
+  let ccEmails = '';
+  try {
+    const { data: managers } = await db
+      .from('agents')
+      .select('email, role')
+      .in('role', ['Manager', 'Admin', 'manager', 'admin'])
+      .eq('status', 'Active');
+
+    ccEmails = (managers || [])
+      .filter(m => m.email && m.email.trim() !== '')
+      .map(m => m.email.trim())
+      .join(';');
+  } catch(e) { console.warn('Could not load CC emails:', e); }
+
+  const subject = `KPI Report — ${month} ${year}`;
+  const mailtoUrl = `mailto:${allEmails}?subject=${encodeURIComponent(subject)}${ccEmails ? '&cc=' + ccEmails : ''}`;
+
+  window.open(mailtoUrl);
+  showToast('Email opened!', 'success');
+}
+
+function secToTime(s) {
+  if (!s && s!==0) return '—';
+  return Math.floor(s/3600).toString().padStart(2,'0')+':'+Math.floor((s%3600)/60).toString().padStart(2,'0')+':'+Math.floor(s%60).toString().padStart(2,'0');
+}
+function timeToSec(val) {
+  if (!val) return 0;
+  const p=val.toString().trim().split(':');
+  if (p.length===3) return (+p[0])*3600+(+p[1])*60+(+p[2]);
+  if (p.length===2) return (+p[0])*60+(+p[1]);
+  return 0;
+}
+function formatDate(d) { if (!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function openModal(title,msg,onConfirm) { document.getElementById('modal-title').innerText=title; document.getElementById('modal-msg').innerText=msg; document.getElementById('modal-overlay').classList.add('open'); document.getElementById('modal-confirm').onclick=()=>{closeModal();onConfirm();}; }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function openPanel()  { document.getElementById('panel-overlay').classList.add('open'); document.getElementById('slide-panel').classList.add('open'); }
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); document.getElementById('slide-panel').classList.remove('open'); }
+
+init();
+</script>
+</body>
+</html>

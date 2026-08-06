@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — FCR Analytics</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+.fcr-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:24px; }
+.fcr-card { background:var(--surface2); border-radius:16px; padding:20px; border:1px solid var(--border); position:relative; overflow:hidden; }
+.fcr-card::after { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background:var(--gold); }
+.fcr-label { font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+.fcr-value { font-size:28px; font-weight:800; color:var(--gold); }
+.fcr-sub   { font-size:11px; color:var(--muted); margin-top:4px; }
+.badge-resolved { padding:3px 8px; border-radius:6px; font-size:10px; font-weight:800; background:rgba(16,185,129,0.12); color:#10B981; }
+.badge-recalled { padding:3px 8px; border-radius:6px; font-size:10px; font-weight:800; background:rgba(239,68,68,0.12); color:#EF4444; }
+.rate-good    { color:#10B981 !important; }
+.rate-warning { color:#F59E0B !important; }
+.rate-bad     { color:#EF4444 !important; }
+
+/* Agent breakdown */
+.agent-fcr-row { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+.agent-fcr-header {
+  display:flex; align-items:center; gap:14px; padding:14px 18px;
+  background:var(--surface2); cursor:pointer; user-select:none;
+  transition:background 0.15s;
+}
+.agent-fcr-header:hover { background:var(--surface3,var(--surface2)); }
+.agent-fcr-name  { font-weight:700; font-size:14px; flex:1; }
+.agent-fcr-stats { display:flex; gap:20px; align-items:center; font-size:12px; color:var(--muted); }
+.agent-fcr-rate  { font-size:16px; font-weight:800; min-width:52px; text-align:right; }
+.agent-fcr-body  { display:none; border-top:1px solid var(--border); padding:16px 18px; background:var(--surface); }
+.agent-fcr-body.open { display:block; }
+
+/* Case card */
+.case-card {
+  border:1px solid rgba(239,68,68,0.2); border-radius:10px;
+  background:rgba(239,68,68,0.04); padding:14px 16px; margin-bottom:10px;
+}
+.case-card:last-child { margin-bottom:0; }
+.case-original { margin-bottom:10px; padding-bottom:10px; border-bottom:1px dashed var(--border); }
+.case-recall   { }
+.case-tag { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+.case-tag.original { color:var(--muted); }
+.case-tag.recall   { color:#EF4444; }
+.case-line { font-size:12px; color:var(--text); margin-bottom:3px; }
+.case-line span { color:var(--muted); }
+.case-why {
+  margin-top:10px; padding:8px 12px; border-radius:8px;
+  background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.15);
+  font-size:11px; color:#EF4444; font-weight:600;
+}
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">FCR Analytics</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> First Call Resolution — 72h Window</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="loadFCR()"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <button class="btn btn-success" id="export-btn" onclick="exportFCR()" style="display:none;"><i class="fas fa-file-excel"></i> Export Excel</button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- Filters -->
+      <div class="section-card fade-up" style="margin-bottom:20px;">
+        <div class="section-body">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Date From</label>
+              <input type="date" id="filter-from" class="form-input" onchange="loadFCR()">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Date To</label>
+              <input type="date" id="filter-to" class="form-input" onchange="loadFCR()">
+            </div>
+            <div class="form-group" style="margin:0;min-width:180px;">
+              <label class="form-label">Agent</label>
+              <select id="filter-agent" class="form-input" onchange="loadFCR()">
+                <option value="">All Agents</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="fcr-grid fade-up">
+        <div class="fcr-card">
+          <div class="fcr-label">FCR Rate</div>
+          <div class="fcr-value" id="fcr-rate">—</div>
+          <div class="fcr-sub">Resolved within 72 hours</div>
+        </div>
+        <div class="fcr-card">
+          <div class="fcr-label">Total Calls</div>
+          <div class="fcr-value" id="total-calls">—</div>
+          <div class="fcr-sub">Calls with a customer mobile</div>
+        </div>
+        <div class="fcr-card">
+          <div class="fcr-label">Resolved</div>
+          <div class="fcr-value" id="resolved-calls" style="color:#10B981;">—</div>
+          <div class="fcr-sub">No callback within 72h</div>
+        </div>
+        <div class="fcr-card">
+          <div class="fcr-label">Recalled</div>
+          <div class="fcr-value" id="recalled-calls" style="color:#EF4444;">—</div>
+          <div class="fcr-sub">Called back within 72h</div>
+        </div>
+      </div>
+
+      <!-- Agent Breakdown -->
+      <div class="section-card fade-up" style="margin-bottom:20px;">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-users" style="color:var(--gold)"></i> Agent Breakdown</div>
+          <span id="fcr-note" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div class="section-body">
+          <div id="agent-breakdown">
+            <div class="loading-wrap"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Table -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-list-ul" style="color:var(--gold)"></i> All Calls</div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Date / Time</th>
+                  <th>Agent</th>
+                  <th>Mobile</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Recalled At</th>
+                  <th>Gap</th>
+                </tr>
+              </thead>
+              <tbody id="fcr-tbody">
+                <tr><td colspan="7"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText   = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const today     = new Date();
+const lastMonth = new Date();
+lastMonth.setDate(today.getDate() - 30);
+document.getElementById('filter-from').value = lastMonth.toISOString().split('T')[0];
+document.getElementById('filter-to').value   = today.toISOString().split('T')[0];
+
+function normalizePhone(p) {
+  if (!p) return null;
+  p = p.toString().replace(/\D/g, '');
+  if (p.startsWith('002')) p = p.slice(3);
+  if (p.startsWith('20') && p.length >= 12) p = p.slice(2);
+  if (p.length === 10 && p.startsWith('1')) p = '0' + p;
+  return p;
+}
+
+function fmt(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function rateColor(rate) {
+  if (rate >= 80) return '#10B981';
+  if (rate >= 60) return '#F59E0B';
+  return '#EF4444';
+}
+
+
+function exportFCR() {
+  const results = window._fcrResults || [];
+  if (!results.length) { alert('No data to export.'); return; }
+
+  const from = window._fcrFrom || '';
+  const to   = window._fcrTo   || '';
+  const wb   = XLSX.utils.book_new();
+
+  // ── Styles helper (limited in SheetJS CE) ──
+  const pct = v => ({ v, t: 'n', z: '0.0%' });
+
+  // ─────────────────────────────────────────────
+  // SHEET 1: Summary
+  // ─────────────────────────────────────────────
+  const total    = results.length;
+  const recalled = results.filter(r => r.status === 'Recalled').length;
+  const resolved = total - recalled;
+  const rate     = total > 0 ? resolved / total : 0;
+
+  const summaryData = [
+    ['NOS Customer Care — FCR Performance Report'],
+    ['Period:', from + ' → ' + to],
+    ['Generated:', new Date().toLocaleString('en-GB')],
+    [],
+    ['Metric', 'Value'],
+    ['Total Calls Analyzed', total],
+    ['Resolved (FCR Success)', resolved],
+    ['Recalled (FCR Failure)', recalled],
+    ['FCR Rate', pct(rate)],
+    ['FCR Target', pct(0.85)],
+    ['Status', rate >= 0.85 ? 'Achieved ✅' : 'Below Target ❌'],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+  wsSummary['!cols'] = [{ wch: 28 }, { wch: 22 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+  // ─────────────────────────────────────────────
+  // SHEET 2: Agent Breakdown
+  // ─────────────────────────────────────────────
+  const agentMap = {};
+  results.forEach(r => {
+    const n = r.agent_name || 'Unknown';
+    if (!agentMap[n]) agentMap[n] = { total: 0, recalled: 0, followUp: 0 };
+    agentMap[n].total++;
+    if (r.status === 'Recalled') agentMap[n].recalled++;
+  });
+
+  const agentRows = [
+    ['Agent', 'Total Calls', 'FCR Failures', 'Resolved', 'FCR %', 'Target', 'Status']
+  ];
+  Object.entries(agentMap)
+    .sort((a, b) => (a[1].recalled / a[1].total) - (b[1].recalled / b[1].total))
+    .forEach(([name, d]) => {
+      const r = (d.total - d.recalled) / d.total;
+      agentRows.push([
+        name,
+        d.total,
+        d.recalled,
+        d.total - d.recalled,
+        pct(r),
+        pct(0.85),
+        r >= 0.85 ? 'Achieved' : 'Below Target'
+      ]);
+    });
+
+  const totalResolved = total - recalled;
+  agentRows.push([]);
+  agentRows.push(['TOTAL', total, recalled, totalResolved, pct(rate), pct(0.85), rate >= 0.85 ? 'Achieved' : 'Below Target']);
+
+  const wsAgents = XLSX.utils.aoa_to_sheet(agentRows);
+  wsAgents['!cols'] = [{ wch: 22 }, { wch: 13 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsAgents, 'Agent Breakdown');
+
+  // ─────────────────────────────────────────────
+  // SHEET 3: FCR Failed Cases
+  // ─────────────────────────────────────────────
+  const failedRows = [
+    ['Original Call — Date/Time', 'Agent', 'Mobile', 'Call Reason', 'Recall Date/Time', 'Received By', 'Gap', 'FCR Status']
+  ];
+  results
+    .filter(r => r.status === 'Recalled')
+    .sort((a, b) => a._dt - b._dt)
+    .forEach(r => {
+      failedRows.push([
+        new Date(r.logged_at).toLocaleString('en-GB'),
+        r.agent_name || '—',
+        r.customer_mobile || r.customer_mobile2 || '—',
+        r.call_reason || '—',
+        r.recallDt ? new Date(r.recallDt).toLocaleString('en-GB') : '—',
+        r.recallAgent || '—',
+        r.gap,
+        'FCR Failure'
+      ]);
+    });
+
+  const wsFailed = XLSX.utils.aoa_to_sheet(failedRows);
+  wsFailed['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 15 }, { wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 10 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsFailed, 'FCR Failures');
+
+  // ─────────────────────────────────────────────
+  // SHEET 4: All Calls
+  // ─────────────────────────────────────────────
+  const allRows = [
+    ['Date/Time', 'Agent', 'Mobile', 'Call Reason', 'Direction', 'Status', 'Recalled At', 'Received By', 'Gap']
+  ];
+  results
+    .slice()
+    .sort((a, b) => a._dt - b._dt)
+    .forEach(r => {
+      allRows.push([
+        new Date(r.logged_at).toLocaleString('en-GB'),
+        r.agent_name || '—',
+        r.customer_mobile || r.customer_mobile2 || '—',
+        r.call_reason || '—',
+        r.call_direction === 'outbound' ? 'Outbound' : 'Inbound',
+        r.status,
+        r.recallDt ? new Date(r.recallDt).toLocaleString('en-GB') : '—',
+        r.recallAgent || '—',
+        r.gap
+      ]);
+    });
+
+  const wsAll = XLSX.utils.aoa_to_sheet(allRows);
+  wsAll['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 28 }, { wch: 11 }, { wch: 11 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, wsAll, 'All Calls');
+
+  // ── Download ──
+  const fileName = 'NOS_FCR_Report_' + from + '_to_' + to + '.xlsx';
+  XLSX.writeFile(wb, fileName);
+}
+
+async function loadAgents() {
+  const { data } = await db.from('agents').select('formal_name').order('formal_name');
+  const sel = document.getElementById('filter-agent');
+  (data || []).forEach(a => sel.add(new Option(a.formal_name, a.formal_name)));
+}
+
+async function fetchAllCalls(from, toBuffer) {
+  const PAGE = 1000;
+  let all  = [];
+  let page = 0;
+  while (true) {
+    const { data, error } = await db.from('call_logs')
+      .select('id,logged_at,agent_name,customer_mobile,customer_mobile2,call_reason,call_direction')
+      .gte('logged_at', from + 'T00:00:00')
+      .lte('logged_at', toBuffer + 'T23:59:59')
+      .order('logged_at', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    page++;
+  }
+  return all;
+}
+
+function toggleAgent(id) {
+  const body = document.getElementById('ab-' + id);
+  if (body) body.classList.toggle('open');
+}
+
+function renderAgentBreakdown(results) {
+  const agentMap = {};
+
+  results.forEach(r => {
+    const name = r.agent_name || 'Unknown';
+    if (!agentMap[name]) agentMap[name] = { total: 0, recalled: 0, cases: [] };
+    agentMap[name].total++;
+    if (r.status === 'Recalled') {
+      agentMap[name].recalled++;
+      agentMap[name].cases.push(r);
+    }
+  });
+
+  const agents = Object.entries(agentMap).sort((a, b) => {
+    const rateA = ((a[1].total - a[1].recalled) / a[1].total) * 100;
+    const rateB = ((b[1].total - b[1].recalled) / b[1].total) * 100;
+    return rateA - rateB;
+  });
+
+  if (!agents.length) {
+    document.getElementById('agent-breakdown').innerHTML = '<div class="empty-state">No data</div>';
+    return;
+  }
+
+  document.getElementById('agent-breakdown').innerHTML = agents.map(([name, data], idx) => {
+    const rate     = ((data.total - data.recalled) / data.total * 100).toFixed(1);
+    const color    = rateColor(parseFloat(rate));
+    const agentId  = 'agent_' + idx;
+
+    const casesHtml = data.cases.length === 0
+      ? '<div style="color:var(--muted);font-size:13px;padding:8px 0;">No failed cases — fully resolved.</div>'
+      : data.cases.map(c => {
+          const diffMs   = c.recallDt - c._dt;
+          const diffHrs  = Math.floor(diffMs / 3600000);
+          const diffMins = Math.floor((diffMs % 3600000) / 60000);
+
+          return `
+            <div class="case-card">
+              <div class="case-original">
+                <div class="case-tag original">Original Call</div>
+                <div class="case-line"><span>When:</span> ${fmt(c.logged_at)}</div>
+                <div class="case-line"><span>Mobile:</span> ${c.customer_mobile || c.customer_mobile2 || '—'}</div>
+                <div class="case-line"><span>Reason:</span> ${c.call_reason || '—'}</div>
+              </div>
+              <div class="case-recall">
+                <div class="case-tag recall">Customer Called Back</div>
+                <div class="case-line"><span>When:</span> ${fmt(c.recallDt)}</div>
+                <div class="case-line"><span>Received by:</span> <strong>${c.recallAgent || '—'}</strong></div>
+                <div class="case-line"><span>Gap:</span> ${diffHrs}h ${diffMins}m after original call</div>
+              </div>
+              <div class="case-why">
+                FCR Failed — customer called back within ${diffHrs}h ${diffMins}m and was received by ${c.recallAgent || 'a different agent'}, meaning their issue was not resolved in the first call.
+              </div>
+            </div>`;
+        }).join('');
+
+    return `
+      <div class="agent-fcr-row">
+        <div class="agent-fcr-header" onclick="toggleAgent('${agentId}')">
+          <div class="agent-avatar" style="width:32px;height:32px;font-size:11px;flex-shrink:0;">${initials(name)}</div>
+          <div class="agent-fcr-name">${name}</div>
+          <div class="agent-fcr-stats">
+            <span>${data.total} calls</span>
+            <span style="color:#EF4444;">${data.recalled} failed</span>
+          </div>
+          <div class="agent-fcr-rate" style="color:${color};">${rate}%</div>
+          <i class="fas fa-chevron-down" style="color:var(--muted);font-size:11px;margin-left:8px;"></i>
+        </div>
+        <div class="agent-fcr-body" id="ab-${agentId}">
+          ${casesHtml}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadFCR() {
+  const tbody = document.getElementById('fcr-tbody');
+  tbody.innerHTML = '<tr><td colspan="7"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  document.getElementById('agent-breakdown').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  document.getElementById('fcr-rate').innerText       = '—';
+  document.getElementById('total-calls').innerText    = '—';
+  document.getElementById('resolved-calls').innerText = '—';
+  document.getElementById('recalled-calls').innerText = '—';
+
+  const from  = document.getElementById('filter-from').value;
+  const to    = document.getElementById('filter-to').value;
+  const agent = document.getElementById('filter-agent').value;
+  if (!from || !to) return;
+
+  try {
+    const toBuffer = new Date(to);
+    toBuffer.setDate(toBuffer.getDate() + 3);
+    const toBufferStr = toBuffer.toISOString().split('T')[0];
+
+    const allCalls = await fetchAllCalls(from, toBufferStr);
+    document.getElementById('fcr-note').innerText = 'Total rows fetched: ' + allCalls.length;
+
+    if (!allCalls.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">📭</span>No data in this range</div></td></tr>';
+      document.getElementById('agent-breakdown').innerHTML = '<div class="empty-state">No data</div>';
+      return;
+    }
+
+    const callsWithPhone = allCalls.map(c => ({
+      ...c,
+      _phone:  normalizePhone(c.customer_mobile),
+      _phone2: normalizePhone(c.customer_mobile2),
+      _dt:     new Date(c.logged_at)
+    }));
+
+    const rangeEnd = new Date(to + 'T23:59:59');
+    const filtered = callsWithPhone.filter(c =>
+      c._dt >= new Date(from + 'T00:00:00') &&
+      c._dt <= rangeEnd &&
+      (c._phone || c._phone2) &&
+      (!agent || c.agent_name === agent)
+    );
+
+    if (!filtered.length) {
+      const msg = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">📭</span>No calls with a mobile number in this range</div></td></tr>';
+      tbody.innerHTML = msg;
+      document.getElementById('agent-breakdown').innerHTML = '<div class="empty-state">No data</div>';
+      return;
+    }
+
+    let resolvedCount = 0;
+    let recalledCount = 0;
+    const results = [];
+    window._fcrResults  = results;
+    window._fcrFrom     = from;
+    window._fcrTo       = to;
+
+    filtered.forEach(call => {
+      const windowEnd = new Date(call._dt.getTime() + 72 * 60 * 60 * 1000);
+
+      const recall = callsWithPhone.find(c =>
+        c._dt > call._dt &&
+        c._dt <= windowEnd &&
+        c.id !== call.id &&
+        c.call_direction !== 'outbound' &&
+        c.agent_name !== call.agent_name &&   // same agent = follow-up, not FCR failure
+        (
+          (call._phone  && (c._phone === call._phone  || c._phone2 === call._phone))  ||
+          (call._phone2 && (c._phone === call._phone2 || c._phone2 === call._phone2))
+        )
+      );
+
+      if (recall) {
+        recalledCount++;
+        const ms = recall._dt - call._dt;
+        results.push({
+          ...call,
+          status:       'Recalled',
+          recallDt:     recall._dt,
+          recallAgent:  recall.agent_name || '—',
+          gap:          Math.floor(ms/3600000) + 'h ' + Math.floor((ms%3600000)/60000) + 'm'
+        });
+      } else {
+        resolvedCount++;
+        results.push({ ...call, status: 'Resolved', recallDt: null, recallAgent: null, gap: '—' });
+      }
+    });
+
+    const total  = filtered.length;
+    const rate   = total > 0 ? (resolvedCount / total * 100).toFixed(1) : 0;
+    const rateEl = document.getElementById('fcr-rate');
+    rateEl.innerText = rate + '%';
+    rateEl.className = 'fcr-value ' + (rate >= 80 ? 'rate-good' : rate >= 60 ? 'rate-warning' : 'rate-bad');
+    document.getElementById('total-calls').innerText    = total;
+    document.getElementById('resolved-calls').innerText = resolvedCount;
+    document.getElementById('recalled-calls').innerText = recalledCount;
+
+    window._fcrResults = results;
+    document.getElementById('export-btn').style.display = 'inline-flex';
+    renderAgentBreakdown(results);
+
+    tbody.innerHTML = results.slice().reverse().map(r => `
+      <tr>
+        <td style="font-weight:700;color:var(--gold);white-space:nowrap;">${fmt(r.logged_at)}</td>
+        <td>${r.agent_name || '—'}</td>
+        <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${r.customer_mobile || r.customer_mobile2 || '—'}</td>
+        <td style="font-size:12px;color:var(--muted);">${r.call_reason || '—'}</td>
+        <td><span class="${r.status === 'Resolved' ? 'badge-resolved' : 'badge-recalled'}">${r.status}</span></td>
+        <td style="font-size:11px;color:var(--muted);">${r.recallDt ? fmt(r.recallDt) + (r.recallAgent ? ' — ' + r.recallAgent : '') : '—'}</td>
+        <td style="font-size:11px;color:var(--muted);">${r.gap}</td>
+      </tr>
+    `).join('');
+
+  } catch(e) {
+    console.error(e);
+    const errMsg = 'Error: ' + e.message;
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">❌</span>' + errMsg + '</div></td></tr>';
+    document.getElementById('agent-breakdown').innerHTML = '<div class="empty-state">' + errMsg + '</div>';
+  }
+}
+
+loadAgents();
+loadFCR();
+</script>
+</body>
+</html>

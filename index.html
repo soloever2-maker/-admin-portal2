@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOS Admin — Dashboard</title>
+  
+  <!-- 1. Add favicon -->
+  <link rel="icon" href="icon-192.png" type="image/png">
+  
+  <!-- link main CSS file -->
+  <link rel="stylesheet" href="css/main.css">
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- login page specific styles -->
+  <style>
+    #login-view {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100%;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 9999;
+      background: var(--bg);
+      transition: opacity 0.4s ease;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 380px;
+      padding: 2.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      box-shadow: var(--shadow-modal);
+      text-align: center;
+    }
+
+    .login-logo-icon {
+      width: 52px; height: 52px;
+      background: var(--accent-grad);
+      border-radius: var(--r-md);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; color: white;
+      margin: 0 auto 18px;
+      box-shadow: 0 4px 16px rgba(79, 138, 249, 0.35);
+    }
+
+    .login-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: var(--text); margin-bottom: 6px;
+    }
+    .login-desc { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+
+    /* hide dashboard by default */
+    .admin-layout { display: none; }
+
+    /* class to show dashboard */
+    .show-dashboard { display: flex !important; }
+    .hide-login { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- ═════════════════════════════════════
+       LOGIN VIEW
+       ═════════════════════════════════════ -->
+  <div id="login-view">
+    <div class="login-card">
+      <div class="login-logo-icon"><i class="fas fa-plane-departure"></i></div>
+      <h1 class="login-title">Welcome Back</h1>
+      <p class="login-desc">Enter your credentials to access the Admin Panel</p>
+      
+      <form onsubmit="event.preventDefault(); performLogin();">
+        <div class="form-group" style="margin-bottom: 20px; text-align: left;">
+          <label class="form-label">Username</label>
+          <div style="position: relative;">
+            <i class="fas fa-user" style="position: absolute; left: 14px; top: 12px; color: var(--muted);"></i>
+            <input type="text" class="form-input" style="padding-left: 40px;" placeholder="admin" value="admin">
+          </div>
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 30px; text-align: left;">
+          <label class="form-label">Password</label>
+          <div style="position: relative;">
+            <i class="fas fa-lock" style="position: absolute; left: 14px; top: 12px; color: var(--muted);"></i>
+            <input type="password" class="form-input" style="padding-left: 40px;" placeholder="••••••••" value="123456">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px;">
+          Sign In <i class="fas fa-arrow-right" style="margin-left: 8px;"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════
+       DASHBOARD VIEW
+       ═════════════════════════════════════ -->
+  <div class="admin-layout" id="dashboard-layout">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="sidebar" id="sidebar"></aside>
+  
+  <!-- ══ MAIN ══ -->
+  <div class="main-content">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Dashboard</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Overview
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="loadAll()" title="Refresh">
+          <i class="fas fa-sync-alt" id="refresh-icon"></i>
+        </button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE CONTENT -->
+    <div class="page-content">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up">
+        <div class="kpi-card gold">
+          <span class="kpi-icon">👥</span>
+          <div class="kpi-label">Total Agents</div>
+          <div class="kpi-value" id="kpi-agents">—</div>
+          <div class="kpi-sub" id="kpi-agents-sub">Loading...</div>
+        </div>
+        <div class="kpi-card green">
+          <span class="kpi-icon">✅</span>
+          <div class="kpi-label">Active Agents</div>
+          <div class="kpi-value" id="kpi-active">—</div>
+          <div class="kpi-sub">Working today</div>
+        </div>
+        <div class="kpi-card blue">
+          <span class="kpi-icon">📞</span>
+          <div class="kpi-label">Calls Today</div>
+          <div class="kpi-value" id="kpi-calls">—</div>
+          <div class="kpi-sub" id="kpi-calls-sub">Loading...</div>
+        </div>
+        <div class="kpi-card orange">
+          <span class="kpi-icon">⏳</span>
+          <div class="kpi-label">Pending Requests</div>
+          <div class="kpi-value" id="kpi-requests">—</div>
+          <div class="kpi-sub">Awaiting approval</div>
+        </div>
+        <div class="kpi-card purple">
+          <span class="kpi-icon">📅</span>
+          <div class="kpi-label">This Week Shifts</div>
+          <div class="kpi-value" id="kpi-shifts">—</div>
+          <div class="kpi-sub">Scheduled</div>
+        </div>
+        <div class="kpi-card red">
+          <span class="kpi-icon">🏖️</span>
+          <div class="kpi-label">On Leave Today</div>
+          <div class="kpi-value" id="kpi-leave">—</div>
+          <div class="kpi-sub">Annual / Sick / Casual</div>
+        </div>
+        <div class="kpi-card blue">
+          <span class="kpi-icon">📊</span>
+          <div class="kpi-label">Avg Conformance Today</div>
+          <div class="kpi-value" id="kpi-conformance">—</div>
+          <div class="kpi-sub" id="kpi-conformance-sub">Loading...</div>
+        </div>
+      </div>
+
+      <!-- ROW: Charts + Requests -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+
+        <!-- Calls by Reason Chart -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-chart-pie" style="color:var(--gold)"></i>
+              Calls by Reason — MTD
+            </div>
+            <span id="chart-month" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body" style="height:220px;display:flex;align-items:center;justify-content:center;">
+            <canvas id="calls-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Recent Requests -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-bell" style="color:var(--gold)"></i>
+              Pending Requests
+            </div>
+            <a href="pages/requests.html" class="btn btn-ghost btn-sm">View All</a>
+          </div>
+          <div class="section-body no-pad">
+            <div id="recent-requests-list"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ROW: Agents Today + Call Log -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+        <!-- Agents Today -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-user-clock" style="color:var(--gold)"></i>
+              Today's Schedule
+            </div>
+            <a href="pages/schedule.html" class="btn btn-ghost btn-sm">Full Schedule</a>
+          </div>
+          <div class="section-body no-pad">
+            <div id="today-schedule"></div>
+          </div>
+        </div>
+
+        <!-- Agents Not Logged In -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-user-slash" style="color:#EF4444"></i>
+              Not Logged In Yet
+            </div>
+            <span id="not-logged-count" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body no-pad">
+            <div id="not-logged-list"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ROW: Conformance 7-day chart -->
+      <div style="margin-bottom:20px;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-chart-line" style="color:var(--gold)"></i>
+              Conformance — Last 7 Days
+            </div>
+            <span id="conf-chart-sub" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body" style="height:200px;display:flex;align-items:center;justify-content:center;">
+            <canvas id="conformance-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end page-content -->
+  </div><!-- end main-content -->
+</div><!-- end admin-layout -->
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<!-- link JavaScript files -->
+<script src="js/supabase.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+
+<script>
+// ── Login Logic ──
+function performLogin() {
+  const loginView = document.getElementById('login-view');
+  const dashboardLayout = document.getElementById('dashboard-layout');
+  
+  // simulate login
+  loginView.style.opacity = '0';
+  setTimeout(() => {
+    loginView.style.display = 'none';
+    dashboardLayout.classList.add('show-dashboard');
+    loadAll(); // load data after login
+  }, 500);
+}
+
+// ── Init ──
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  const name = session.username || 'Admin';
+  document.getElementById('admin-name').innerText = name;
+  document.getElementById('admin-avatar').innerText = initials(name);
+  // if session exists, skip login and show dashboard
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('dashboard-layout').classList.add('show-dashboard');
+  loadAll();
+}
+
+// ── Load All ──
+async function loadAll() {
+  const icon = document.getElementById('refresh-icon');
+  icon.style.animation = 'spin 0.8s linear infinite';
+  await Promise.all([loadKPIs(), loadRecentRequests(), loadTodaySchedule(), loadNotLoggedIn(), loadConformanceChart()]);
+  icon.style.animation = '';
+}
+
+// ── KPIs ──
+async function loadKPIs() {
+  try {
+    const today = getToday();
+    const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }).slice(0, 7);
+
+    // Total Agents
+    const { data: agents } = await db.from('agents').select('id, status');
+    const total  = agents?.length || 0;
+    const active = agents?.filter(a => a.status === 'Active').length || 0;
+    document.getElementById('kpi-agents').innerText     = total;
+    document.getElementById('kpi-agents-sub').innerText = `${active} active`;
+
+    // ✅ Active Agents = agents with Work shift today
+    const { count: workingToday } = await db.from('schedule')
+      .select('*', { count: 'exact', head: true })
+      .eq('shift_date', today)
+      .eq('day_type', 'Work');
+    document.getElementById('kpi-active').innerText = workingToday || 0;
+
+    // Calls today
+    const { count: callsToday } = await db.from('call_logs')
+      .select('*', { count: 'exact', head: true })
+      .gte('logged_at', today + 'T00:00:00')
+      .lte('logged_at', today + 'T23:59:59');
+    document.getElementById('kpi-calls').innerText = callsToday || 0;
+
+    // MTD calls
+    const { count: callsMTD } = await db.from('call_logs')
+      .select('*', { count: 'exact', head: true })
+      .gte('logged_at', month + '-01T00:00:00');
+    document.getElementById('kpi-calls-sub').innerText = `${callsMTD || 0} this month`;
+
+    // Pending requests
+    const { count: pending } = await db.from('requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'Pending');
+    document.getElementById('kpi-requests').innerText = pending || 0;
+    // Check if element exists before setting to avoid error
+    const badge = document.getElementById('pending-count');
+    if(badge) badge.innerText = pending || 0;
+
+    // This week shifts
+    const weekStart = getWeekStart();
+    const weekEnd   = getWeekEnd();
+    const { count: shifts } = await db.from('schedule')
+      .select('*', { count: 'exact', head: true })
+      .eq('day_type', 'Work')
+      .gte('shift_date', weekStart)
+      .lte('shift_date', weekEnd);
+    document.getElementById('kpi-shifts').innerText = shifts || 0;
+
+    // On leave today
+    const { count: onLeave } = await db.from('schedule')
+      .select('*', { count: 'exact', head: true })
+      .eq('shift_date', today)
+      .in('day_type', ['Annual','Sick','Casual','PH']);
+    document.getElementById('kpi-leave').innerText = onLeave || 0;
+
+    // Avg Conformance Today
+    const { data: confData } = await db.from('daily_performance')
+      .select('conformance')
+      .eq('perf_date', today);
+    if (confData && confData.length) {
+      const avg = confData.reduce((s, r) => s + (r.conformance || 0), 0) / confData.length;
+      document.getElementById('kpi-conformance').innerText = Math.round(avg) + '%';
+      document.getElementById('kpi-conformance-sub').innerText = `${confData.length} agents`;
+    } else {
+      document.getElementById('kpi-conformance').innerText = '—';
+      document.getElementById('kpi-conformance-sub').innerText = 'No data yet';
+    }
+
+    // Load chart
+    loadCallsChart(month);
+
+  } catch(e) {
+    console.error('KPI error:', e);
+  }
+}
+
+// ── Calls Chart ──
+let callsChartInstance = null;
+async function loadCallsChart(month) {
+  try {
+    const { data } = await db.from('call_logs')
+      .select('call_reason')
+      .gte('logged_at', month + '-01T00:00:00');
+
+    if (!data || !data.length) return;
+
+    const counts = {};
+    data.forEach(r => {
+      const key = r.call_reason || 'Unknown';
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const labels = sorted.map(e=>e[0]);
+    const values = sorted.map(e=>e[1]);
+    // chart colors
+    const colors = ['#3B82F6','#10B981','#60A5FA','#8B5CF6','#EF4444','#F59E0B'];
+
+    const ctx = document.getElementById('calls-chart');
+    if (callsChartInstance) callsChartInstance.destroy();
+
+    callsChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'right', labels: { color: '#6B7A99', font: { size: 11 } } }
+        }
+      }
+    });
+    document.getElementById('chart-month').innerText = new Date().toLocaleString('default', { month: 'long' });
+  } catch(e) { console.error('Chart error:', e); }
+}
+
+// ── Recent Requests ──
+async function loadRecentRequests() {
+  const list = document.getElementById('recent-requests-list');
+  list.innerHTML = '<div class="p-20 center muted">Loading...</div>';
+  try {
+    const { data } = await db.from('requests')
+      .select('id, agent_name, type, status, created_at')
+      .eq('status', 'Pending')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (!data || !data.length) {
+      list.innerHTML = '<div class="p-20 center muted">No pending requests</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(r => `
+      <div class="list-item">
+        <div class="list-info">
+          <div class="list-title">${r.agent_name || "Unknown"}</div>
+          <div class="list-sub">${r.type} • ${r.created_at?.slice(0,10)}</div>
+        </div>
+        <div class="list-action">
+          <a href="pages/requests.html" class="btn btn-ghost btn-sm">Review</a>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { list.innerHTML = '<div class="p-20 center red">Error loading</div>'; }
+}
+
+// ── Today Schedule ──
+async function loadTodaySchedule() {
+  const list = document.getElementById('today-schedule');
+  list.innerHTML = '<div class="p-20 center muted">Loading...</div>';
+  try {
+    const today = getToday();
+    const { data } = await db.from('schedule')
+      .select('*, agents(formal_name), shift_types(name, start_time, end_time)')
+      .eq('shift_date', today)
+      .eq('day_type', 'Work')
+      .limit(5);
+
+    if (!data || !data.length) {
+      list.innerHTML = '<div class="p-20 center muted">No shifts today</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(s => `
+      <div class="list-item">
+        <div class="list-info">
+          <div class="list-title">${s.agents?.formal_name || 'Unknown'}</div>
+          <div class="list-sub">${s.shift_types?.start_time?.slice(0,5) || ""} - ${s.shift_types?.end_time?.slice(0,5) || ""}</div>
+        </div>
+        <div class="list-action">
+          <span class="badge badge-green">On Duty</span>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { list.innerHTML = '<div class="p-20 center red">Error loading</div>'; }
+}
+
+// ── Agents Not Logged In Today ──
+async function loadNotLoggedIn() {
+  const list = document.getElementById('not-logged-list');
+  list.innerHTML = '<div class="p-20 center muted">Loading...</div>';
+  try {
+    const today = getToday();
+
+    // All agents scheduled for Work today
+    const { data: scheduled } = await db.from('schedule')
+      .select('agent_id, agents(formal_name), shift_types(start_time, end_time)')
+      .eq('shift_date', today)
+      .eq('day_type', 'Work');
+
+    if (!scheduled || !scheduled.length) {
+      list.innerHTML = '<div class="p-20 center muted">No shifts today</div>';
+      document.getElementById('not-logged-count').innerText = '';
+      return;
+    }
+
+    // Agents who DID log in today
+    const { data: loggedIn } = await db.from('daily_performance')
+      .select('agent_id')
+      .eq('perf_date', today)
+      .not('login_time', 'is', null);
+
+    const loggedIds = new Set((loggedIn || []).map(r => r.agent_id));
+    const missing   = scheduled.filter(s => !loggedIds.has(s.agent_id));
+
+    document.getElementById('not-logged-count').innerText = missing.length
+      ? `${missing.length} missing`
+      : 'All logged in ✅';
+
+    if (!missing.length) {
+      list.innerHTML = '<div class="p-20 center" style="color:#10B981;font-weight:600;">All agents logged in ✅</div>';
+      return;
+    }
+
+    list.innerHTML = missing.map(s => `
+      <div class="list-item">
+        <div class="list-info">
+          <div class="list-title">${s.agents?.formal_name || 'Unknown'}</div>
+          <div class="list-sub">${s.shift_types?.start_time?.slice(0,5) || '—'} – ${s.shift_types?.end_time?.slice(0,5) || '—'}</div>
+        </div>
+        <div class="list-action">
+          <span class="badge" style="background:rgba(239,68,68,0.15);color:#EF4444;">Not In</span>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { list.innerHTML = '<div class="p-20 center red">Error loading</div>'; }
+}
+
+// ── Conformance 7-day Chart ──
+let confChartInstance = null;
+async function loadConformanceChart() {
+  try {
+    const today = new Date(getToday());
+    const days  = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (6 - i));
+      return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+    });
+
+    const { data } = await db.from('daily_performance')
+      .select('perf_date, conformance')
+      .in('perf_date', days);
+
+    const byDate = {};
+    (data || []).forEach(r => {
+      if (!byDate[r.perf_date]) byDate[r.perf_date] = [];
+      byDate[r.perf_date].push(r.conformance || 0);
+    });
+
+    const labels  = days.map(d => { const dt = new Date(d+'T00:00:00'); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()] + ' ' + dt.getDate(); });
+    const values  = days.map(d => byDate[d] ? Math.round(byDate[d].reduce((s,v)=>s+v,0)/byDate[d].length) : null);
+
+    const ctx = document.getElementById('conformance-chart');
+    if (confChartInstance) confChartInstance.destroy();
+
+    confChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Avg Conformance %',
+          data: values,
+          borderColor: '#D4AF37',
+          backgroundColor: 'rgba(212,175,55,0.08)',
+          pointBackgroundColor: '#D4AF37',
+          pointRadius: 5,
+          tension: 0.3,
+          fill: true,
+          spanGaps: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y: {
+            min: 0, max: 100,
+            ticks: { color: '#6B7A99', callback: v => v + '%' },
+            grid:  { color: 'rgba(255,255,255,0.05)' }
+          },
+          x: { ticks: { color: '#6B7A99' }, grid: { display: false } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.parsed.y + '%' } }
+        }
+      }
+    });
+
+    const avg7 = values.filter(v => v !== null);
+    if (avg7.length) {
+      const overall = Math.round(avg7.reduce((s,v)=>s+v,0)/avg7.length);
+      document.getElementById('conf-chart-sub').innerText = `7-day avg: ${overall}%`;
+    }
+  } catch(e) { console.error('Conformance chart error:', e); }
+}
+</script>
+</body>
+</html>

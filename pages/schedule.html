@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Schedule</title>
+<!-- Fix: Added Favicon -->
+<link rel="icon" type="image/png" href="../logo.png">
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+.sched-table { width:100%; border-collapse:collapse; font-size:12px; }
+.sched-table th {
+  padding:10px 8px; background:var(--surface2);
+  color:var(--muted); font-size:10px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  border-bottom:1px solid var(--border);
+  text-align:center; white-space:nowrap;
+}
+.sched-table th.agent-col { text-align:left; min-width:140px; }
+.sched-table td {
+  padding:6px 6px; border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border); text-align:center; vertical-align:middle;
+}
+.sched-table td.agent-col { text-align:left; padding:8px 12px; font-weight:700; font-size:13px; background:var(--surface2); }
+.sched-table tr:last-child td { border-bottom:none; }
+.shift-select {
+  width:100%; padding:6px 4px;
+  background:var(--surface2); border:1.5px solid var(--border);
+  border-radius:8px; color:var(--text);
+  font-size:11px; font-family:'Plus Jakarta Sans',sans-serif;
+  font-weight:700;
+  outline:none; cursor:pointer; transition:all 0.2s; text-align:center;
+}
+.shift-select:focus { border-color:var(--gold); background:var(--surface3); }
+/* ── الخانة بقت زرار chip بدل select ── */
+button.shift-select { appearance:none; -webkit-appearance:none; display:block; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* ── البوب-أب بتاع اختيار الشيفت ── */
+#shift-pop-backdrop { position:fixed; inset:0; z-index:998; display:none; }
+#shift-pop {
+  position:fixed; z-index:999; display:none;
+  width:320px; max-width:calc(100vw - 20px);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,.45);
+  padding:12px; animation:popIn .12s ease-out;
+}
+@keyframes popIn { from { opacity:0; transform:scale(.96) translateY(4px); } to { opacity:1; transform:none; } }
+#shift-pop .sp-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+#shift-pop .sp-title { font-size:12.5px; font-weight:800; color:var(--text); }
+#shift-pop .sp-sub   { font-size:10.5px; color:var(--muted); font-weight:600; }
+#shift-pop .sp-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:4px; }
+#shift-pop .sp-close:hover { color:var(--text); }
+#shift-pop .sp-section { font-size:9.5px; font-weight:800; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; margin:10px 2px 6px; }
+#shift-pop .sp-grid   { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+#shift-pop .sp-leaves { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+#shift-pop .sp-opt {
+  border:1.5px solid transparent; border-radius:9px; padding:8px 6px;
+  font-size:11px; font-weight:700; color:#fff; cursor:pointer; text-align:center;
+  font-family:'Plus Jakarta Sans',sans-serif; transition:transform .1s, filter .1s;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#shift-pop .sp-opt:hover { transform:translateY(-1px); filter:brightness(1.1); }
+#shift-pop .sp-opt.sp-current { outline:2.5px solid var(--gold); outline-offset:1.5px; }
+#shift-pop .sp-off { grid-column:1 / -1; background:#EF4444; }
+@media (max-width:640px) {
+  #shift-pop { left:10px !important; right:10px; width:auto; top:auto !important; bottom:12px; }
+  #shift-pop-backdrop { background:rgba(0,0,0,.35); }
+}
+.shift-select.is-off              { color:#fff; border-color:#EF4444; background:#EF4444; font-weight:700; }
+.shift-select.is-work             { color:#fff; border-color:#10B981; background:#10B981; font-weight:700; }
+.shift-select.is-annual           { color:#fff; border-color:#8B5CF6; background:#8B5CF6; font-weight:700; }
+.shift-select.is-sick             { color:#fff; border-color:#F43F5E; background:#F43F5E; font-weight:700; }
+.shift-select.is-casual           { color:#fff; border-color:#F59E0B; background:#F59E0B; font-weight:700; }
+.shift-select.is-ph               { color:#fff; border-color:#3B82F6; background:#3B82F6; font-weight:700; }
+.shift-select.is-unpaid           { color:#fff; border-color:#64748B; background:#64748B; font-weight:700; }
+.shift-select.is-shift-afternoon  { color:#fff; border-color:#0EA5E9; background:#0EA5E9; font-weight:700; }
+.shift-select.is-shift-evening    { color:#000; border-color:#F4D03F; background:#F4D03F; font-weight:700; }
+.shift-select.is-shift-night      { color:#fff; border-color:#6366F1; background:#6366F1; font-weight:700; }
+
+html.light .shift-select.is-off             { color:#fff; }
+html.light .shift-select.is-work            { color:#fff; }
+html.light .shift-select.is-annual          { color:#fff; }
+html.light .shift-select.is-sick            { color:#fff; }
+html.light .shift-select.is-casual         { color:#000; }
+html.light .shift-select.is-ph              { color:#fff; }
+html.light .shift-select.is-unpaid          { color:#fff; }
+html.light .shift-select.is-shift-afternoon { color:#fff; }
+html.light .shift-select.is-shift-evening   { color:#000; }
+html.light .shift-select.is-shift-night     { color:#fff; }
+.day-header { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.day-name   { font-size:11px; font-weight:700; color:var(--text); }
+.day-date   { font-size:10px; color:var(--muted); }
+.day-today  { color:var(--gold) !important; }
+
+/* ── Channel Badge (Calls / WhatsApp) ── */
+.ch-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:28px; height:18px; border-radius:4px; font-size:12px;
+  cursor:pointer; margin-top:3px; transition:transform 0.15s;
+  user-select:none; line-height:1;
+}
+.ch-badge:hover { transform:scale(1.2); }
+.ch-calls    { background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.35); }
+.ch-whatsapp { background:rgba(37,211,102,0.12); border:1px solid rgba(37,211,102,0.4); }
+.week-tab {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 14px; border-radius:10px; cursor:pointer;
+  border:1.5px solid var(--border); background:var(--surface2);
+  color:var(--muted); font-size:12px; font-weight:600;
+  transition:all 0.2s; white-space:nowrap;
+}
+.week-tab:hover  { border-color:var(--border2); color:var(--text); }
+.week-tab.active { border-color:var(--gold); color:var(--gold); background:rgba(212,175,55,0.08); }
+.week-tab .wk-status { font-size:9px; padding:2px 7px; border-radius:20px; }
+.count-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; font-size:10px; font-weight:700; background:rgba(212,175,55,0.1); color:var(--gold); }
+.day-count-item { font-size:9px; font-weight:700; padding:2px 6px; border-radius:6px; }
+
+/* ── Draft Requests Banner ── */
+.requests-banner {
+  background: rgba(212,175,55,0.04);
+  border: 1px solid rgba(212,175,55,0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.req-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #10B981;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.req-pill:hover { background: rgba(16,185,129,0.2); }
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Schedule</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Weekly Management</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Export</button>
+        <button class="btn btn-ghost" onclick="openShiftTypesPanel()"><i class="fas fa-sliders-h"></i> Shift Types</button>
+        <button class="btn btn-ghost" onclick="openTemplatePanel()"><i class="fas fa-clone"></i> Templates</button>
+        <button class="btn btn-primary" onclick="openNewWeekPanel()"><i class="fas fa-plus"></i> New Week</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadAll()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <div class="section-card fade-up" style="margin-bottom:16px;">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-calendar-week" style="color:var(--gold)"></i> Weeks</div>
+          <div style="font-size:12px;color:var(--muted);" id="week-count">Loading...</div>
+        </div>
+        <div style="padding:12px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);">
+          <select id="filter-year" class="form-input" style="width:110px;font-size:12px;" onchange="filterWeekTabs()">
+            <option value="">All Years</option>
+          </select>
+          <select id="filter-month" class="form-input" style="width:130px;font-size:12px;" onchange="filterWeekTabs()">
+            <option value="">All Months</option>
+            <option value="01">January</option><option value="02">February</option>
+            <option value="03">March</option><option value="04">April</option>
+            <option value="05">May</option><option value="06">June</option>
+            <option value="07">July</option><option value="08">August</option>
+            <option value="09">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+          <select id="filter-week" class="form-input" style="width:220px;font-size:12px;" onchange="selectWeek(this.value)">
+            <option value="">— Select a week —</option>
+          </select>
+        </div>
+        <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;" id="weeks-tabs"></div>
+      </div>
+
+      <div class="section-card fade-up" id="schedule-card" style="display:none;">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-table" style="color:var(--gold)"></i> <span id="sched-week-title">Week Schedule</span></div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="sched-status-badge"></span>
+            <button class="btn btn-ghost btn-sm" onclick="exportScheduleAsPNG()" id="copy-btn">
+              <i class="fas fa-image"></i> Save as Image
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="saveSchedule()" id="save-btn"><i class="fas fa-save"></i> Save</button>
+            <button class="btn btn-success btn-sm" onclick="publishWeek()" id="publish-btn"><i class="fas fa-globe"></i> Publish</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteWeek()" id="delete-btn"><i class="fas fa-trash"></i> Delete</button>
+          </div>
+        </div>
+
+        <!-- Draft Requests Banner -->
+        <div id="requests-banner" style="display:none; padding:12px 16px; border-bottom:1px solid var(--border);">
+          <div class="requests-banner">
+            <i class="fas fa-inbox" style="color:var(--gold);font-size:16px;flex-shrink:0;"></i>
+            <span style="font-size:13px;font-weight:700;color:var(--text);">Agents Requests :</span>
+            <div id="requests-pills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            <span id="requests-empty" style="font-size:12px;color:var(--muted);display:none;">No New Req.</span>
+          </div>
+        </div>
+
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;flex-wrap:wrap;" id="shift-summary"></div>
+        <div class="section-body no-pad">
+          <div class="table-wrap"><div id="schedule-grid"></div></div>
+        </div>
+      </div>
+
+      <!-- Channel Split Section -->
+      <div class="section-card fade-up" id="channel-split-card" style="display:none; margin-top:16px;">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-random" style="color:var(--gold)"></i> Daily Channel Split</div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:12px;color:var(--muted);">Click the badge in the table to change the channel</span>
+            <span id="channel-split-summary" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+        </div>
+        <div class="section-body no-pad">
+          <div id="channel-split-grid" style="overflow-x:auto;"></div>
+        </div>
+      </div>
+
+      <div id="no-week-selected" class="section-card fade-up">
+        <div class="empty-state" style="padding:60px;">
+          <span class="empty-icon">📅</span>
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No Week Selected</div>
+          <div style="margin-bottom:16px;">Select a week from above or create a new one</div>
+          <button class="btn btn-primary" onclick="openNewWeekPanel()"><i class="fas fa-plus"></i> Create New Week</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">New Week</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+
+let allWeeks      = [];
+let allAgents     = [];
+let allShiftTypes = [];
+let currentWeek   = null;
+let scheduleData  = {};
+let unsaved       = false;
+let draftRequests = {};
+let changedDates  = new Set();
+
+const TODAY = getToday();
+
+const MORNING_EMOJI = '🟢';
+const SHIFT_PALETTE = ['🔵','🟠','🟣','🔴','🟡','🩵','🟤','⚫'];
+const shiftEmojiMap = {};
+let paletteIndex = 0;
+
+function getShiftEmoji(startTime) {
+  if (!startTime) return '⭕';
+  const hour = parseInt(startTime.substring(0,2));
+  if (hour < 12) return MORNING_EMOJI;
+  const key = startTime.substring(0,5);
+  if (!shiftEmojiMap[key]) {
+    shiftEmojiMap[key] = SHIFT_PALETTE[paletteIndex % SHIFT_PALETTE.length];
+    paletteIndex++;
+  }
+  return shiftEmojiMap[key];
+}
+
+async function loadAll() {
+  await Promise.all([loadAgents(), loadShiftTypes(), loadWeeks()]);  
+  const today = new Date();
+  document.getElementById('filter-year').value = today.getFullYear();
+  const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+  document.getElementById('filter-month').value = currentMonth;
+  filterWeekTabs();
+  }
+
+async function loadAgents() {
+  const { data } = await db.from('agents').select('id,formal_name,xcally_id').eq('status','Active').order('formal_name');
+  allAgents = data || [];
+}
+
+async function loadShiftTypes() {
+  // بنحمّل الكل (حتى المخفي) عشان الأسابيع القديمة اللي فيها شيفتات مخفية تفضل تظهر صح —
+  // الإخفاء بيتطبق في قوايم الاختيار بس
+  const { data } = await db.from('shift_types').select('*').order('start_time');
+  allShiftTypes = data || [];
+}
+
+async function loadWeeks() {
+  const { data } = await db.from('schedule_weeks').select('*').order('week_start', { ascending: false });
+  allWeeks = data || [];
+  renderWeekTabs();
+}
+
+function renderWeekTabs() {
+  document.getElementById('week-count').innerText = `${allWeeks.length} week(s)`;
+  const years = [...new Set(allWeeks.map(w => w.week_start.substring(0,4)))].sort().reverse();
+  const yearEl = document.getElementById('filter-year');
+  const curYear = yearEl.value;
+  yearEl.innerHTML = '<option value="">All Years</option>' +
+    years.map(y => `<option value="${y}" ${curYear===y?'selected':''}>${y}</option>`).join('');
+  filterWeekTabs();
+}
+
+function filterWeekTabs() {
+  const year  = document.getElementById('filter-year').value;
+  const month = document.getElementById('filter-month').value;
+  const filtered = allWeeks.filter(w => {
+    if (year  && !w.week_start.startsWith(year))        return false;
+    if (month && w.week_start.substring(5,7) !== month) return false;
+    return true;
+  });
+  const weekEl = document.getElementById('filter-week');
+  weekEl.innerHTML = '<option value="">— Select a week —</option>' +
+    filtered.map(w => `<option value="${w.id}" ${currentWeek?.id===w.id?'selected':''}>
+      ${formatDateShort(w.week_start)} → ${formatDateShort(w.week_end)} (${w.status})
+    </option>`).join('');
+  const container = document.getElementById('weeks-tabs');
+  if (!filtered.length) { container.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px;">No weeks found.</div>`; return; }
+  const statusColor = { Draft:'badge-muted', Open:'badge-warning', Published:'badge-success' };
+  container.innerHTML = filtered.map(w => `
+    <div class="week-tab ${currentWeek?.id === w.id ? 'active' : ''}" onclick="selectWeek('${w.id}')">
+      <i class="fas fa-calendar-week" style="font-size:12px;"></i>
+      <div>
+        <div style="font-size:12px;font-weight:700;">${formatDateShort(w.week_start)} → ${formatDateShort(w.week_end)}</div>
+        <div style="font-size:10px;color:var(--muted);">${w.note || ''}</div>
+      </div>
+      <span class="badge ${statusColor[w.status]||'badge-muted'} wk-status">${w.status}</span>
+    </div>
+  `).join('');
+}
+
+async function selectWeek(weekId) {
+  if (unsaved) { const go = confirm('You have unsaved changes. Discard?'); if (!go) return; unsaved = false; }
+  currentWeek = allWeeks.find(w => w.id === weekId);
+  renderWeekTabs();
+  document.getElementById('no-week-selected').style.display = 'none';
+  document.getElementById('schedule-card').style.display    = 'block';
+  await loadScheduleGrid();
+}
+
+function updateWeekUI() {
+  const statusColor = { Draft:'badge-muted', Open:'badge-warning', Published:'badge-success' };
+  document.getElementById('sched-status-badge').innerHTML =
+    `<span class="badge ${statusColor[currentWeek.status]||'badge-muted'}">${currentWeek.status}</span>`;
+}
+
+async function loadDraftRequests() {
+  draftRequests = {};
+  if (!currentWeek) return;
+  try {
+    const { data } = await db.from('requests').select('*').eq('type', 'Schedule Request').eq('status', 'Pending');
+    const banner  = document.getElementById('requests-banner');
+    const pillsEl = document.getElementById('requests-pills');
+    const emptyEl = document.getElementById('requests-empty');
+
+    const weekReqs = (data||[]).filter(r => {
+      try { const det = JSON.parse(r.details); return det.week_id === currentWeek.id; } catch(e) { return false; }
+    });
+
+    if (currentWeek.status === 'Draft' || currentWeek.status === 'Open') {
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none'; return;
+    }
+
+    if (!weekReqs.length) {
+      pillsEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    pillsEl.innerHTML = '';
+
+    weekReqs.forEach(req => {
+      try {
+        const det   = JSON.parse(req.details);
+        const agent = allAgents.find(a => a.id === req.agent_id);
+        const name  = agent?.formal_name || req.agent_name || 'Unknown';
+        draftRequests[req.agent_id] = det.draft || {};
+        const pill = document.createElement('div');
+        pill.className = 'req-pill';
+        pill.innerHTML = `<i class="fas fa-user" style="font-size:10px;"></i> ${name}`;
+        pill.onclick = () => applyAgentRequest(req.agent_id, det.draft || {}, name);
+        pillsEl.appendChild(pill);
+      } catch(e) {}
+    });
+  } catch(e) { console.error(e); }
+}
+
+function applyAgentRequest(agentId, draft, agentName) {
+  let applied = 0;
+  Object.entries(draft).forEach(([date, entry]) => {
+    const val = entry.day_type === 'Work' && entry.shift_type_id ? `Work__${entry.shift_type_id}` : entry.day_type;
+    if (applyShiftValue(agentId, date, val)) applied++;
+  });
+  if (applied > 0) {
+    showToast('Applied ' + agentName + '\'s request — Press Save', 'success');
+  } else {
+    showToast('No changes applied', 'warning');
+  }
+}
+
+async function loadScheduleGrid() {
+  if (!currentWeek) return;
+  Object.keys(shiftEmojiMap).forEach(k => delete shiftEmojiMap[k]);
+  paletteIndex = 0;
+
+  const gridEl = document.getElementById('schedule-grid');
+  gridEl.innerHTML = `<div class="loading-wrap"><div class="spinner"></div></div>`;
+
+  document.getElementById('sched-week-title').innerText =
+    `${formatDateFull(currentWeek.week_start)}  →  ${formatDateFull(currentWeek.week_end)}`;
+
+  const { data: existing } = await db.from('schedule').select('*').eq('week_id', currentWeek.id);
+  scheduleData = {};
+  (existing || []).forEach(s => {
+    let shiftTypeId = s.shift_type_id;
+    if (!shiftTypeId && s.shift_time && s.day_type === 'Work') {
+      const parts = s.shift_time.split(' - ');
+      if (parts.length === 2) {
+        const matched = allShiftTypes.find(st => st.start_time.startsWith(parts[0].trim()) && st.end_time.startsWith(parts[1].trim()));
+        if (matched) shiftTypeId = matched.id;
+      }
+    }
+    scheduleData[`${s.agent_id}_${s.shift_date}`] = { id: s.id, day_type: s.day_type, shift_type_id: shiftTypeId, channel: s.channel || 'Calls' };
+  });
+
+  allShiftTypes.forEach(st => getShiftEmoji(st.start_time));
+  const dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+  
+  let html = `<table class="sched-table"><thead><tr><th class="agent-col">Agent</th>`;
+  dates.forEach(d => {
+    const isToday = d.iso === TODAY;
+    html += `<th><div class="day-header"><span class="day-name ${isToday?'day-today':''}">${d.dayName}</span><span class="day-date ${isToday?'day-today':''}">${d.display}</span></div></th>`;
+  });
+  html += `<th style="min-width:55px;text-align:center;">Off</th>`;
+  html += `</tr></thead><tbody>`;
+
+  allAgents.forEach(agent => {
+    html += `<tr><td class="agent-col"><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;flex-shrink:0;">${initials(agent.formal_name)}</div><span>${agent.formal_name}</span></div></td>`;
+    
+    dates.forEach(d => {
+      const key        = `${agent.id}_${d.iso}`;
+      const entry      = scheduleData[key] || { day_type: 'Off', shift_type_id: null };
+      const cls        = getSelectClass(entry.day_type, entry.shift_type_id);
+      const agentDraft = draftRequests[agent.id] || {};
+      const hasReq     = agentDraft[d.iso] !== undefined;
+      const reqEntry   = agentDraft[d.iso] || {};
+      const reqLabel   = hasReq
+        ? (reqEntry.day_type === 'Work' && reqEntry.shift_type_id
+            ? (() => { const st = allShiftTypes.find(s => s.id === reqEntry.shift_type_id); return st ? st.start_time.substring(0,5)+'-'+st.end_time.substring(0,5) : 'Work'; })()
+            : reqEntry.day_type)
+        : '';
+
+      html += `<td style="position:relative;">
+        ${hasReq ? `<div style="position:absolute;top:2px;right:2px;width:7px;height:7px;background:#10B981;border-radius:50%;z-index:1;" title="Request: ${reqLabel}"></div>` : ''}
+        <button type="button" class="shift-select ${cls}" data-agent="${agent.id}" data-date="${d.iso}"
+                onclick="openShiftPop(this, '${agent.formal_name.replace(/'/g, "\\'")}', '${d.dayName} ${d.display}')">
+          ${entryLabel(entry)}
+        </button>
+        <div data-agent="${agent.id}" data-date="${d.iso}"
+             onclick="onChannelToggle('${agent.id}','${d.iso}',this)"
+             class="ch-badge ch-${(entry.channel||'Calls').toLowerCase()}"
+             title="Channel: ${entry.channel||'Calls'} — click to toggle"
+             style="${entry.day_type!=='Work'?'display:none;':''}">
+          ${(entry.channel||'Calls')==='WhatsApp'?'💬':'📞'}
+        </div>
+        ${hasReq ? `<div style="font-size:9px;color:#10B981;font-weight:700;margin-top:2px;text-align:center;">← ${reqLabel}</div>` : ''}
+      </td>`;
+    });
+
+    const offCount = dates.filter(d => {
+      const entry = scheduleData[`${agent.id}_${d.iso}`];
+      return !entry || entry.day_type === 'Off';
+    }).length;
+    html += `<td style="text-align:center;font-weight:800;color:#EF4444;font-size:15px;background:var(--surface2);">${offCount}</td>`;
+    html += `</tr>`;
+  });
+
+  html += `<tr style="background:var(--surface2);"><td class="agent-col" style="font-size:11px;color:var(--muted);font-weight:700;padding:8px 12px;">Daily Count</td>`;
+  
+  dates.forEach(d => {
+    const dayEntries = Object.entries(scheduleData).filter(([k]) => k.endsWith('_'+d.iso));
+    const working = dayEntries.filter(([,v]) => v.day_type==='Work').length;
+    const shiftCounts = {};
+    dayEntries.filter(([,v]) => v.day_type==='Work' && v.shift_type_id).forEach(([,v]) => {
+      const st = allShiftTypes.find(s => s.id === v.shift_type_id);
+      if (st) {
+        const label = st.start_time.substring(0,5);
+        shiftCounts[label] = (shiftCounts[label] || 0) + 1;
+      }
+    });
+  
+    const shiftBreakdown = Object.entries(shiftCounts)
+      .sort()
+      .map(([time, cnt]) => `<div style="font-size:9px;color:var(--muted);">${time}: <b style="color:var(--text)">${cnt}</b></div>`)
+      .join('');
+
+    const callsCount = dayEntries.filter(([,v]) => v.day_type==='Work' && (v.channel||'Calls')==='Calls').length;
+    const waCount    = dayEntries.filter(([,v]) => v.day_type==='Work' && v.channel==='WhatsApp').length;
+    const channelLine = working > 0
+      ? `<div style="margin-top:4px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+          <span style="font-size:9px;font-weight:700;color:#3B82F6;">📞${callsCount}</span>
+          <span style="font-size:9px;font-weight:700;color:#25D366;">💬${waCount}</span>
+         </div>`
+      : '';
+
+    html += `<td style="text-align:center;padding:6px 4px;">
+      <span style="color:#10B981;font-weight:800;font-size:13px;">${working}</span>
+      <span style="color:var(--muted);font-size:10px;"> working</span>
+      <div style="margin-top:4px;">${shiftBreakdown}</div>
+      ${channelLine}
+    </td>`;
+  });
+  
+  html += `<td></td>`;
+  html += `</tr></tbody></table>`;
+
+  gridEl.innerHTML = html;
+  updateSummary();
+  updateWeekUI();
+  await loadDraftRequests();
+  renderChannelSplit();
+}
+
+async function exportScheduleAsPNG() {
+  if (!currentWeek) { showToast('Select a week first', 'error'); return; }
+  const btn = document.getElementById('copy-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+  try {
+    const gridEl = document.getElementById('schedule-grid');
+    const canvas = await html2canvas(gridEl, { backgroundColor: '#111111', scale: 2, useCORS: true, logging: false });
+    const link = document.createElement('a');
+    link.download = `Schedule_${currentWeek.week_start}_${currentWeek.week_end}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    showToast('Schedule saved as image!', 'success');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-image"></i> Save as Image';
+  }
+}
+
+const LEAVE_TYPES = ['Annual','Sick','Casual','PH','Unpaid'];
+const LEAVE_COLORS = { Annual:'#8B5CF6', Sick:'#F43F5E', Casual:'#F59E0B', PH:'#3B82F6', Unpaid:'#64748B', Task:'#EF4444' };
+
+// ── نص الخانة حسب قيمتها ──
+function entryLabel(entry) {
+  if (!entry || entry.day_type === 'Off') return '— Off —';
+  if (entry.day_type !== 'Work') return entry.day_type;
+  const st = allShiftTypes.find(s => s.id === entry.shift_type_id);
+  if (!st) return 'Work';
+  return `${formatTime(st.start_time)} - ${formatTime(st.end_time)}`;
+}
+
+// ═══════════════════════════════════════════
+// البوب-أب: ضغطة على الخانة تفتح لوحة اختيار ملونة
+// ═══════════════════════════════════════════
+let popCtx = null; // { agentId, date, chipEl }
+
+function openShiftPop(chipEl, agentName, dayLabel) {
+  const agentId = chipEl.dataset.agent;
+  const date    = chipEl.dataset.date;
+  popCtx = { agentId, date, chipEl };
+
+  const entry      = scheduleData[`${agentId}_${date}`] || { day_type: 'Off', shift_type_id: null };
+  const currentVal = entry.day_type === 'Work' && entry.shift_type_id ? `Work__${entry.shift_type_id}` : entry.day_type;
+
+  // الشيفتات النشطة + الشيفت المخفي لو هو المختار حالياً (عشان ميضيعش)
+  const visible = allShiftTypes.filter(st => st.is_active !== false);
+  const currentArchived = (entry.day_type === 'Work' && entry.shift_type_id)
+    ? allShiftTypes.find(st => st.id === entry.shift_type_id && st.is_active === false) : null;
+  const shifts = currentArchived ? [...visible, currentArchived] : visible;
+
+  const colorOf = (st) => {
+    const cls = getSelectClass('Work', st.id);
+    return { 'is-work':'#10B981', 'is-shift-afternoon':'#0EA5E9', 'is-shift-evening':'#F4D03F', 'is-shift-night':'#6366F1' }[cls] || '#10B981';
+  };
+  const textOf = (st) => getSelectClass('Work', st.id) === 'is-shift-evening' ? '#000' : '#fff';
+
+  let html = `
+    <div class="sp-head">
+      <div><div class="sp-title">${agentName}</div><div class="sp-sub">${dayLabel}</div></div>
+      <button class="sp-close" onclick="closeShiftPop()"><i class="fas fa-times"></i></button>
+    </div>
+    <button class="sp-opt sp-off ${currentVal==='Off'?'sp-current':''}" onclick="pickShift('Off')">— Off —</button>
+    <div class="sp-section">⏰ Shifts</div>
+    <div class="sp-grid">`;
+
+  shifts.forEach(st => {
+    const val = `Work__${st.id}`;
+    html += `<button class="sp-opt ${currentVal===val?'sp-current':''}"
+                     style="background:${colorOf(st)};color:${textOf(st)};"
+                     title="${st.name}"
+                     onclick="pickShift('${val}')">${getShiftEmoji(st.start_time)} ${formatTime(st.start_time)}-${formatTime(st.end_time)}${st.is_active===false?' 🔒':''}</button>`;
+  });
+
+  html += `</div><div class="sp-section">🏖️ Leaves</div><div class="sp-leaves">`;
+  [...LEAVE_TYPES, 'Task'].forEach(t => {
+    html += `<button class="sp-opt ${currentVal===t?'sp-current':''}" style="background:${LEAVE_COLORS[t]};" onclick="pickShift('${t}')">${t}</button>`;
+  });
+  html += `</div>`;
+
+  const pop = document.getElementById('shift-pop');
+  pop.innerHTML = html;
+
+  // ── التموضع جنب الخانة مع احترام حدود الشاشة ──
+  document.getElementById('shift-pop-backdrop').style.display = 'block';
+  pop.style.display = 'block';
+  if (window.innerWidth > 640) {
+    const r = chipEl.getBoundingClientRect();
+    const pw = 320, ph = pop.offsetHeight || 300;
+    let left = Math.min(Math.max(8, r.left + r.width/2 - pw/2), window.innerWidth - pw - 8);
+    let top  = r.bottom + 6;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+    pop.style.left = left + 'px';
+    pop.style.top  = top + 'px';
+  }
+}
+
+function closeShiftPop() {
+  document.getElementById('shift-pop').style.display = 'none';
+  document.getElementById('shift-pop-backdrop').style.display = 'none';
+  popCtx = null;
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeShiftPop(); });
+
+// ── تطبيق قيمة على خانة (بيستخدمها البوب-أب والـ Templates وطلبات الأجينتس) ──
+function applyShiftValue(agentId, date, val) {
+  const key = `${agentId}_${date}`;
+  let dayType = val, shiftTypeId = null;
+  if (val.startsWith('Work__')) { dayType = 'Work'; shiftTypeId = val.split('__')[1]; }
+  const prevChannel = scheduleData[key]?.channel || 'Calls';
+  scheduleData[key] = { ...scheduleData[key], day_type: dayType, shift_type_id: shiftTypeId, channel: dayType === 'Work' ? prevChannel : 'Calls' };
+
+  const chipEl = document.querySelector(`.shift-select[data-agent="${agentId}"][data-date="${date}"]`);
+  if (chipEl) {
+    chipEl.className = `shift-select ${getSelectClass(dayType, shiftTypeId)}`;
+    chipEl.innerText = entryLabel(scheduleData[key]);
+  }
+
+  const badge = document.querySelector(`.ch-badge[data-agent="${agentId}"][data-date="${date}"]`);
+  if (badge) { badge.style.display = dayType === 'Work' ? 'inline-flex' : 'none'; }
+
+  unsaved = true;
+  changedDates.add(date);
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> Save <span style="color:var(--warning);font-size:10px;">●</span>';
+  renderChannelSplit();
+  return !!chipEl;
+}
+
+function pickShift(val) {
+  if (!popCtx) return;
+  applyShiftValue(popCtx.agentId, popCtx.date, val);
+  closeShiftPop();
+}
+
+function getSelectClass(dayType, shiftTypeId) {
+  if (dayType === 'Annual') return 'is-annual';
+  if (dayType === 'Sick')   return 'is-sick';
+  if (dayType === 'Casual') return 'is-casual';
+  if (dayType === 'PH')     return 'is-ph';
+  if (dayType === 'Unpaid') return 'is-unpaid';
+  if (dayType !== 'Work')   return 'is-off';
+  if (!shiftTypeId) return 'is-work';
+  const st = allShiftTypes.find(s => s.id === shiftTypeId);
+  if (!st) return 'is-work';
+  const hour = parseInt(st.start_time.substring(0,2));
+  if (hour < 12) return 'is-work';
+  if (hour < 14) return 'is-shift-afternoon';
+  if (hour < 17) return 'is-shift-evening';
+  return 'is-shift-night';
+}
+
+ 
+async function saveSchedule() {
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  try {
+    const upserts = [];
+    Object.keys(scheduleData).forEach(key => {
+      const lastUnderscore = key.lastIndexOf('_');
+      const agentId = key.substring(0, lastUnderscore);
+      const date = key.substring(lastUnderscore + 1);
+      const entry = scheduleData[key];
+      upserts.push({ agent_id: agentId, week_id: currentWeek.id, shift_date: date, day_type: entry.day_type, shift_type_id: entry.shift_type_id || null, channel: entry.channel || 'Calls', status: 'Approved' });
+    });
+    if (upserts.length) {
+      const { error } = await db.from('schedule').upsert(upserts, { onConflict: 'agent_id,shift_date' });
+      if (error) throw error;
+      logAudit({ module: 'Schedule', action: 'UPDATE', targetTable: 'schedule',
+        description: `Saved schedule for week ${formatDateShort(currentWeek.week_start)} → ${formatDateShort(currentWeek.week_end)} (${upserts.length} shift entries)` });
+    }
+    await autoGenerateBreaks(changedDates);
+    changedDates.clear(); 
+
+    unsaved = false;
+    showToast('Schedule & Breaks saved!', 'success');
+    btn.innerHTML = '<i class="fas fa-save"></i> Save';
+  } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+  
+async function publishWeek() {
+  const unpublished = allWeeks.filter(w => w.id !== currentWeek.id && w.status !== 'Published' && new Date(w.week_start) < new Date(currentWeek.week_start));
+  const warningMsg = unpublished.length > 0
+    ? `⚠️ Warning: ${unpublished.length} older week(s) are not published yet.\n\nPublishing will make this schedule visible to all agents and auto-generate breaks. Continue?`
+    : 'Publishing will make this schedule visible to all agents and auto-generate breaks. Continue?';
+  openModal('Publish Week', warningMsg, async () => {
+    try {
+      await saveSchedule();
+      const { error } = await db.from('schedule_weeks').update({ status: 'Published' }).eq('id', currentWeek.id);
+      if (error) throw error;
+      logAudit({ module: 'Schedule', action: 'UPDATE', targetTable: 'schedule_weeks', targetId: currentWeek.id,
+        description: `Published week ${formatDateShort(currentWeek.week_start)} → ${formatDateShort(currentWeek.week_end)} (breaks auto-generated + leave balance updated)` });
+      currentWeek.status = 'Published';
+      showToast('Generating breaks...', 'info');
+      await autoGenerateBreaks();
+      showToast('Updating leave balance...', 'info');
+      await updateAnnualLeave();
+      showToast('Week published & breaks generated!', 'success');
+      await loadWeeks(); renderWeekTabs();
+      updateWeekUI();
+      document.getElementById('requests-banner').style.display = 'none';
+    } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+  });
+}
+
+async function updateAnnualLeave() {
+  const year      = new Date(currentWeek.week_start).getFullYear();
+  const yearStart = year + '-01-01';
+  const weekEnd   = currentWeek.week_end;
+  const { data: leaves } = await db.from('schedule').select('agent_id, shift_date').in('day_type', ['Annual', 'Casual']).gte('shift_date', yearStart).lte('shift_date', weekEnd);
+  const cols = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const { data: annualRecords } = await db.from('annual_leave').select('*').eq('year', year);
+  const map = {};
+  (leaves || []).forEach(l => {
+    const month = new Date(l.shift_date + 'T00:00:00').getMonth();
+    if (!map[l.agent_id]) map[l.agent_id] = {};
+    map[l.agent_id][cols[month]] = (map[l.agent_id][cols[month]] || 0) + 1;
+  });
+  for (const agent of allAgents) {
+    const agentMonths  = map[agent.id] || {};
+    const annualRecord = (annualRecords || []).find(a => a.agent_id === agent.id);
+    const updates = {};
+    cols.forEach(m => { updates['used_' + m] = agentMonths[m] || 0; });
+    updates.total_used = cols.reduce((s, m) => s + (agentMonths[m] || 0), 0);
+    if (!annualRecord) {
+      await db.from('annual_leave').insert({ agent_id: agent.id, agent_name: agent.formal_name, year, ...updates, entitlement: 21, carry_over: 0, remaining: 21 - updates.total_used, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      continue;
+    }
+    updates.remaining  = (annualRecord.entitlement + annualRecord.carry_over) - updates.total_used;
+    updates.updated_at = new Date().toISOString();
+    await db.from('annual_leave').update(updates).eq('agent_id', agent.id).eq('year', year);
+  }
+  showToast('Leave balance updated!', 'success');
+}
+
+async function autoGenerateBreaks(datesToUpdate = null) {
+  let dates;
+  
+  if (datesToUpdate && datesToUpdate.size > 0) {
+    dates = Array.from(datesToUpdate).map(iso => ({ iso: iso }));
+  } else {
+    dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+  }
+
+  // النهاردة بتوقيت القاهرة — بنمسح بريكات الأيام غير الشغالة من النهاردة ورايح بس
+  // (البريكات التاريخية القديمة داتا فعلية ومش بنقربلها أبداً)
+  const todayIso = (typeof getToday === 'function')
+    ? getToday()
+    : new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+
+  for (const d of dates) {
+    const schedules      = [];
+    const nonWorkingIds  = [];
+    allAgents.forEach(agent => {
+      const key   = agent.id + '_' + d.iso;
+      const entry = scheduleData[key];
+      if (!entry || entry.day_type !== 'Work') {
+        // يوم أجازة أو من غير شيفت — أي صف بريكات ليه في اليوم ده لازم يتشال
+        nonWorkingIds.push(agent.id);
+        return;
+      }
+      const shiftType = allShiftTypes.find(st => st.id === entry.shift_type_id);
+      if (!shiftType) return;
+      schedules.push({ agent_id: agent.id, shift_types: { start_time: shiftType.start_time, end_time: shiftType.end_time } });
+    });
+
+    // ── تنظيف البريكات اليتيمة: يوم مش Work = مفيش صف بريكات ──
+    if (nonWorkingIds.length && d.iso >= todayIso) {
+      try {
+        const { error: delErr } = await db.from('breaks')
+          .delete()
+          .eq('break_date', d.iso)
+          .in('agent_id', nonWorkingIds);
+        if (delErr) console.error('Break cleanup error:', delErr);
+      } catch (e) { console.error('Break cleanup error:', e); }
+    }
+
+    if (!schedules.length) continue;
+    const upserts = calculateBreaks(schedules, d.iso);
+    if (upserts.length) {
+      const { error } = await db.from('breaks').upsert(upserts, { onConflict: 'agent_id,break_date' });
+      if (error) console.error('Break save error:', error);
+    }
+  }
+}
+  
+function calculateBreaks(schedules, date) {
+  const agents = schedules.filter(s => s.shift_types).map(s => ({
+    agent_id:  s.agent_id,
+    start_str: s.shift_types.start_time.substring(0,5),
+    end_str:   s.shift_types.end_time.substring(0,5),
+    startMins: timeToMins(s.shift_types.start_time),
+    endMins:   timeToMins(s.shift_types.end_time),
+  }));
+  if (!agents.length) return [];
+  agents.sort((a, b) => a.startMins - b.startMins);
+  const assignments = { _agents: agents };
+  const BREAK_TYPES = [
+    { key: 'break1', duration: 15, ratio: 0.30 },
+    { key: 'lunch',  duration: 30, ratio: 0.55 },
+    { key: 'break2', duration: 15, ratio: 0.80 },
+  ];
+  const result = {};
+  for (const bt of BREAK_TYPES) {
+    for (const agent of agents) {
+      const w = (agent.endMins - 60) - (agent.startMins + 60);
+      const ideal = agent.startMins + 60 + Math.floor(w * bt.ratio);
+      const slot = findBestSlot(ideal, bt.duration, agent.startMins, agent.endMins, assignments);
+      registerBreak(assignments, agent.agent_id, slot, bt.duration);
+      if (!result[agent.agent_id]) result[agent.agent_id] = {};
+      result[agent.agent_id][bt.key] = slot;
+    }
+  }
+  return agents.map(agent => {
+    const r  = result[agent.agent_id] || {};
+    const b1 = r.break1 != null ? minsToTime(r.break1) : null;
+    const ln = r.lunch  != null ? minsToTime(r.lunch)  : null;
+    const b2 = r.break2 != null ? minsToTime(r.break2) : null;
+    return {
+      agent_id:         agent.agent_id,
+      break_date:       date,
+      shift_time:       agent.start_str + ' - ' + agent.end_str,
+      break1:           b1,
+      lunch:            ln,
+      break2:           b2,
+      scheduled_break1: b1,
+      scheduled_lunch:  ln,
+      scheduled_break2: b2,
+      updated_at:       new Date().toISOString(),
+    };
+  });
+}
+
+function timeToMins(t) { if(!t)return 0; const p=t.substring(0,5).split(':'); return (+p[0])*60+(+p[1]); }
+function minsToTime(m) { const h=Math.floor(m/60).toString().padStart(2,'0'); const mn=(m%60).toString().padStart(2,'0'); return h+':'+mn+':00'; }
+function roundToQuarter(mins) { return Math.round(mins / 15) * 15; }
+
+// ════════════════════════════════════════════════════════════════
+//  STAGGERED BREAK SCHEDULING ALGORITHM  v2.0
+// ════════════════════════════════════════════════════════════════
+function availableAt(agents,timeMins){return agents.filter(a=>timeMins>=a.startMins&&timeMins<a.endMins).length;}
+function minCoverage(n){if(n>=4)return 2;if(n===3)return 1;return 0;}
+function onBreakAt(assignments,timeMins){
+  let count=0;
+  for(const agentId of Object.keys(assignments)){
+    if(agentId==='_agents')continue;
+    for(const brk of assignments[agentId]){
+      if(timeMins>=brk.start&&timeMins<brk.start+brk.duration){count++;break;}
+    }
+  }
+  return count;
+}
+function canPlace(slotMins,duration,agentStart,agentEnd,assignments){
+  if(slotMins<agentStart+60||slotMins>agentEnd-60-duration)return false;
+  const agents=assignments._agents||[];
+  for(let t=slotMins;t<slotMins+duration;t++){
+    const avail=availableAt(agents,t);
+    const onBreak=onBreakAt(assignments,t);
+    if(avail-(onBreak+1)<minCoverage(avail)+1)return false;
+  }
+  return true;
+}
+function findBestSlot(ideal,duration,agentStart,agentEnd,assignments){
+  const r=roundToQuarter(ideal);
+  function slotTaken(slot){
+    const agents=assignments._agents||[];
+    for(const agentId of Object.keys(assignments)){
+      if(agentId==='_agents')continue;
+      const other=agents.find(a=>a.agent_id===agentId);
+      if(!other)continue;
+      if(other.startMins===agentStart&&other.endMins===agentEnd){
+        for(const brk of assignments[agentId]){
+          if(brk.duration===duration&&brk.start===slot)return true;
+        }
+      }
+    }
+    return false;
+  }
+  if(canPlace(r,duration,agentStart,agentEnd,assignments)&&!slotTaken(r))return r;
+  for(let d=15;d<=180;d+=15){
+    const fwd=r+d,bwd=r-d;
+    if(fwd<=agentEnd-60-duration&&canPlace(fwd,duration,agentStart,agentEnd,assignments)&&!slotTaken(fwd))return fwd;
+    if(bwd>=agentStart+60&&canPlace(bwd,duration,agentStart,agentEnd,assignments)&&!slotTaken(bwd))return bwd;
+  }
+  return r;
+}
+function registerBreak(assignments,agentId,startMins,duration){
+  if(!assignments[agentId])assignments[agentId]=[];
+  assignments[agentId].push({start:startMins,duration});
+}
+
+async function deleteWeek() {
+  openModal('Delete Week', `Delete week "${formatDateShort(currentWeek.week_start)} → ${formatDateShort(currentWeek.week_end)}"? All schedule data will be lost.`, async () => {
+    try {
+      const dates    = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+      const dateList = dates.map(d => d.iso);
+      await db.from('schedule').delete().eq('week_id', currentWeek.id);
+      await db.from('schedule_weeks').delete().eq('id', currentWeek.id);
+      for (const date of dateList) { await db.from('breaks').delete().eq('break_date', date); }
+      logAudit({ module: 'Schedule', action: 'DELETE', targetTable: 'schedule_weeks', targetId: currentWeek.id,
+        description: `Deleted week ${formatDateShort(currentWeek.week_start)} → ${formatDateShort(currentWeek.week_end)} (schedule + breaks removed)` });
+      currentWeek = null; scheduleData = {};
+      document.getElementById('schedule-card').style.display    = 'none';
+      document.getElementById('channel-split-card').style.display = 'none';
+      document.getElementById('no-week-selected').style.display = 'block';
+      showToast('Week deleted!', 'warning');
+      loadWeeks();
+    } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+  });
+}
+
+function openNewWeekPanel() {
+  document.getElementById('panel-title').innerText = 'Create New Week';
+  document.getElementById('panel-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Week Start <span class="req">*</span></label><input type="date" id="nw-start" class="form-input" onchange="autoSetEnd()"></div>
+      <div class="form-group"><label class="form-label">Week End <span class="req">*</span></label><input type="date" id="nw-end" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Note (Optional)</label><input type="text" id="nw-note" class="form-input" placeholder="e.g. Week 15 - April"></div>
+      <div class="form-group"><label class="form-label">Initial Status</label>
+        <select id="nw-status" class="form-input">
+          <option value="Draft">Draft</option>
+          <option value="Open">Open (Agents can request)</option>
+          <option value="Published">Published (Visible to agents)</option>
+        </select>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      <i class="fas fa-info-circle" style="color:var(--gold);margin-right:6px;"></i><b>Draft</b> — Hidden from agents<br>
+      <i class="fas fa-info-circle" style="color:var(--warning);margin-right:6px;"></i><b>Open</b> — Agents can submit shift requests<br>
+      <i class="fas fa-info-circle" style="color:var(--success);margin-right:6px;"></i><b>Published</b> — Final schedule visible to all agents
+    </div>`;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" onclick="createWeek()"><i class="fas fa-plus"></i> Create Week</button>`;
+  openPanel();
+  document.getElementById('nw-start').value = getNextSunday();
+  autoSetEnd();
+}
+
+function autoSetEnd() {
+  const start = document.getElementById('nw-start').value;
+  if (!start) return;
+  const end = new Date(start + 'T12:00:00');
+  end.setDate(end.getDate() + 6);
+  document.getElementById('nw-end').value = end.toISOString().split('T')[0];
+}
+
+async function createWeek() {
+  const start  = document.getElementById('nw-start').value;
+  const end    = document.getElementById('nw-end').value;
+  const note   = document.getElementById('nw-note').value.trim();
+  const status = document.getElementById('nw-status').value;
+  if (!start || !end) { showToast('Please select start and end dates', 'error'); return; }
+  if (start > end)    { showToast('Start date must be before end date', 'error'); return; }
+  try {
+    const { data, error } = await db.from('schedule_weeks').insert({ week_start: start, week_end: end, note, status, created_at: new Date().toISOString() }).select().single();
+    if (error) throw error;
+    logAudit({ module: 'Schedule', action: 'INSERT', targetTable: 'schedule_weeks', targetId: data.id,
+      description: `Created week ${start} → ${end} (status: ${status})${note ? ' — ' + note : ''}` });
+    showToast('Week created!', 'success'); closePanel();
+    await loadWeeks(); selectWeek(data.id);
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function openShiftTypesPanel() {
+  document.getElementById('panel-title').innerText = 'Shift Types';
+  renderShiftTypesPanel(); openPanel();
+}
+
+function renderShiftTypesPanel() {
+  document.getElementById('panel-body').innerHTML = `
+    <div style="margin-bottom:16px;"><button class="btn btn-primary btn-sm" onclick="addShiftTypeRow()"><i class="fas fa-plus"></i> Add Shift Type</button></div>
+    <div id="shift-types-list">${allShiftTypes.map(st => renderShiftTypeRow(st)).join('')}</div>
+    <div id="new-shift-rows"></div>`;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Close</button>
+    <button class="btn btn-primary" onclick="saveShiftTypes()"><i class="fas fa-save"></i> Save All</button>`;
+}
+
+function renderShiftTypeRow(st) {
+  const hidden = st.is_active === false;
+  return `<div class="form-grid form-grid-3" style="margin-bottom:10px;align-items:end;${hidden?'opacity:.45;':''}" data-id="${st.id}">
+    <div class="form-group"><label class="form-label">Name ${hidden?'<span style="color:#F59E0B;">(Hidden)</span>':''}</label><input type="text" class="form-input st-name" value="${st.name}"></div>
+    <div class="form-group"><label class="form-label">Start</label><input type="time" class="form-input st-start" value="${st.start_time}"></div>
+    <div class="form-group"><label class="form-label">End</label><input type="time" class="form-input st-end" value="${st.end_time}"></div>
+    <div class="form-group" style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="toggleShiftTypeActive('${st.id}')" title="${hidden?'Show in pickers':'Hide from pickers'}">
+        <i class="fas ${hidden?'fa-eye':'fa-eye-slash'}"></i> ${hidden?'Show':'Hide'}
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="deleteShiftType('${st.id}',this)"><i class="fas fa-trash"></i> Delete</button>
+    </div></div><div class="divider" style="margin:8px 0;"></div>`;
+}
+
+// إخفاء/إظهار شيفت من قوايم الاختيار — من غير مسح، والأسابيع القديمة مش بتتأثر
+async function toggleShiftTypeActive(id) {
+  try {
+    const st = allShiftTypes.find(s => s.id === id);
+    if (!st) return;
+    const newVal = st.is_active === false; // hidden → show, visible → hide
+    const { error } = await db.from('shift_types').update({ is_active: newVal }).eq('id', id);
+    if (error) throw error;
+    st.is_active = newVal;
+    logAudit({ module: 'Schedule', action: 'UPDATE', targetTable: 'shift_types', targetId: id,
+      description: `${newVal ? 'Unhid' : 'Hid'} shift type "${st.name}" ${newVal ? 'in' : 'from'} pickers` });
+    showToast(`"${st.name}" is now ${newVal ? 'visible' : 'hidden'} in pickers`, 'success');
+    renderShiftTypesPanel();
+    if (currentWeek) loadScheduleGrid();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+let newShiftCount = 0;
+function addShiftTypeRow() {
+  const id  = `new_${++newShiftCount}`;
+  const div = document.createElement('div');
+  div.className = 'form-grid form-grid-3'; div.style.marginBottom = '10px'; div.dataset.id = id;
+  div.innerHTML = `
+    <div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input st-name" placeholder="e.g. Evening"></div>
+    <div class="form-group"><label class="form-label">Start</label><input type="time" class="form-input st-start"></div>
+    <div class="form-group"><label class="form-label">End</label><input type="time" class="form-input st-end"></div>
+    <div class="form-group" style="grid-column:1/-1;display:flex;justify-content:flex-end;">
+      <button class="btn btn-danger btn-sm" onclick="this.closest('[data-id]').remove()"><i class="fas fa-times"></i> Remove</button>
+    </div>`;
+  document.getElementById('new-shift-rows').appendChild(div);
+}
+
+async function deleteShiftType(id, btn) {
+  try {
+    const st = allShiftTypes.find(s => s.id === id);
+    const { error } = await db.from('shift_types').delete().eq('id', id);
+    if (error) throw error;
+    logAudit({ module: 'Schedule', action: 'DELETE', targetTable: 'shift_types', targetId: id,
+      description: `Deleted shift type "${st?.name || id}"${st ? ` (${st.start_time} – ${st.end_time})` : ''}`, oldValue: st || null });
+    btn.closest('[data-id]').remove();
+    allShiftTypes = allShiftTypes.filter(s => s.id !== id);
+    showToast('Shift type deleted', 'warning');
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function saveShiftTypes() {
+  try {
+    for (const row of document.querySelectorAll('#shift-types-list [data-id]')) {
+      const id = row.dataset.id, name = row.querySelector('.st-name').value.trim(), start = row.querySelector('.st-start').value, end = row.querySelector('.st-end').value;
+      if (!name || !start || !end) continue;
+      const prev = allShiftTypes.find(s => s.id === id);
+      const changed = prev && (prev.name !== name || prev.start_time !== start || prev.end_time !== end);
+      await db.from('shift_types').update({ name, start_time:start, end_time:end }).eq('id', id);
+      if (changed) logAudit({ module: 'Schedule', action: 'UPDATE', targetTable: 'shift_types', targetId: id,
+        description: `Updated shift type "${prev.name}" → "${name}" (${start} – ${end})`,
+        oldValue: { name: prev.name, start_time: prev.start_time, end_time: prev.end_time },
+        newValue: { name, start_time: start, end_time: end } });
+    }
+    const toInsert = [];
+    for (const row of document.querySelectorAll('#new-shift-rows [data-id]')) {
+      const name = row.querySelector('.st-name').value.trim(), start = row.querySelector('.st-start').value, end = row.querySelector('.st-end').value;
+      if (!name || !start || !end) continue;
+      toInsert.push({ name, start_time:start, end_time:end, is_active:true });
+    }
+    if (toInsert.length) {
+      await db.from('shift_types').insert(toInsert);
+      logAudit({ module: 'Schedule', action: 'INSERT', targetTable: 'shift_types',
+        description: `Added ${toInsert.length} new shift type(s): ${toInsert.map(t => t.name).join(', ')}`, newValue: toInsert });
+    }
+    await loadShiftTypes();
+    showToast('Shift types saved!', 'success');
+    renderShiftTypesPanel();
+    if (currentWeek) loadScheduleGrid();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function updateSummary() {
+  const summary    = document.getElementById('shift-summary');
+  const dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+  
+  let totalWork = 0, totalOff = 0, totalLeave = 0;
+  
+  allAgents.forEach(agent => {
+    dates.forEach(d => {
+      const key = `${agent.id}_${d.iso}`;
+      const entry = scheduleData[key] || { day_type: 'Off' }; // Treat missing as Off
+      
+      if (entry.day_type === 'Work') totalWork++;
+      else if (['Annual','Sick','Casual','PH','Unpaid'].includes(entry.day_type)) totalLeave++;
+      else if (entry.day_type === 'Off') totalOff++;
+    });
+  });
+
+  summary.innerHTML = `
+    <span style="font-size:12px;color:var(--muted);">Week Summary:</span>
+    <span class="day-count-item" style="background:rgba(16,185,129,0.1);color:#10B981;">✅ Work: ${totalWork}</span>
+    <span class="day-count-item" style="background:rgba(107,122,153,0.1);color:var(--muted);">⏸ Off: ${totalOff}</span>
+    <span class="day-count-item" style="background:rgba(139,92,246,0.1);color:#8B5CF6;">🏖️ Leave: ${totalLeave}</span>
+    <span class="day-count-item" style="background:rgba(212,175,55,0.1);color:var(--gold);">👥 Agents: ${allAgents.length}</span>`;
+}
+
+function getWeekDates(start, end) {
+  const dates = []; const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let cur = new Date(start + 'T12:00:00'); const endDate = new Date(end + 'T12:00:00');
+  while (cur <= endDate) {
+    const iso = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    dates.push({ iso, dayName: days[cur.getDay()], display: String(cur.getDate()).padStart(2,'0')+'/'+String(cur.getMonth()+1).padStart(2,'0') });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+function getNextSunday() { const d = new Date(); d.setDate(d.getDate() + (7 - d.getDay())); return d.toISOString().split('T')[0]; }
+function formatDateShort(d) { if(!d)return '—'; const dt=new Date(d+'T00:00:00'); return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0'); }
+function formatDateFull(d) { if(!d)return '—'; return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function formatTime(t) { if(!t)return '—'; return t.substring(0,5); }
+function openModal(title,msg,onConfirm){document.getElementById('modal-title').innerText=title;document.getElementById('modal-msg').innerText=msg;document.getElementById('modal-overlay').classList.add('open');document.getElementById('modal-confirm').onclick=()=>{closeModal();onConfirm();};}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+function openPanel(){document.getElementById('panel-overlay').classList.add('open');document.getElementById('slide-panel').classList.add('open');}
+function closePanel(){document.getElementById('panel-overlay').classList.remove('open');document.getElementById('slide-panel').classList.remove('open');}
+
+function exportToExcel() {
+  if (!currentWeek) { showToast('Select a week first', 'error'); return; }
+  const dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+
+  // ── Table 1: Main Schedule ──
+  let csv = 'SCHEDULE\n';
+  csv += 'Agent,' + dates.map(d => d.dayName + ' ' + d.display).join(',') + '\n';
+  allAgents.forEach(agent => {
+    let row = agent.formal_name;
+    dates.forEach(d => {
+      const key   = agent.id + '_' + d.iso;
+      const entry = scheduleData[key] || { day_type: 'Off' };
+      if (entry.day_type === 'Work') {
+        const st = allShiftTypes.find(s => s.id === entry.shift_type_id);
+        row += ',' + (st ? st.start_time.substring(0,5)+'-'+st.end_time.substring(0,5) : 'Work');
+      } else {
+        row += ',' + entry.day_type;
+      }
+    });
+    csv += row + '\n';
+  });
+
+  // ── Table 2: Channel Split ──
+  csv += '\nCHANNEL SPLIT\n';
+
+  // Header row 1: day names spanning 2 cols each
+  csv += dates.map(d => `${d.dayName} ${d.display},`).join('') + '\n';
+  // Header row 2: Calls / WhatsApp per day
+  csv += dates.map(() => 'Calls,WhatsApp').join(',') + '\n';
+
+  // Build per-day lists
+  const dayData = dates.map(d => {
+    const calls = [], wa = [];
+    allAgents.forEach(agent => {
+      const key   = agent.id + '_' + d.iso;
+      const entry = scheduleData[key];
+      if (!entry || entry.day_type !== 'Work') return;
+      const st    = allShiftTypes.find(s => s.id === entry.shift_type_id);
+      const shift = st ? st.start_time.substring(0,5)+'-'+st.end_time.substring(0,5) : '';
+      const label = `${agent.formal_name}${shift ? ' ('+shift+')' : ''}`;
+      (entry.channel === 'WhatsApp' ? wa : calls).push(label);
+    });
+    return { calls, wa };
+  });
+
+  const maxRows = Math.max(...dayData.map(d => Math.max(d.calls.length, d.wa.length)), 0);
+  for (let r = 0; r < maxRows; r++) {
+    csv += dates.map((_, i) => {
+      const ca = dayData[i].calls[r] || '';
+      const wa = dayData[i].wa[r]    || '';
+      return `"${ca}","${wa}"`;
+    }).join(',') + '\n';
+  }
+
+  // Totals row
+  csv += dates.map((_, i) => `${dayData[i].calls.length},${dayData[i].wa.length}`).join(',') + '\n';
+
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = 'Schedule_' + currentWeek.week_start + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Schedule exported!', 'success');
+}
+
+function openTemplatePanel() {
+  if (!currentWeek) { showToast('Select a week first', 'error'); return; }
+  const dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+  document.getElementById('panel-title').innerText = 'Apply Shift Template';
+  document.getElementById('panel-body').innerHTML = `
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Select agent, day and shift — will be applied to the schedule.</div>
+    <div class="form-grid form-grid-3" style="margin-bottom:16px;">
+      <div class="form-group"><label class="form-label">Agent</label>
+        <select id="tmpl-agent" class="form-input"><option value="all">All Agents</option>${allAgents.map(a=>`<option value="${a.id}">${a.formal_name}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Day</label>
+        <select id="tmpl-day" class="form-input"><option value="all">All Days</option>${dates.map(d=>`<option value="${d.iso}">${d.dayName} ${d.display}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Shift</label>
+        <select id="tmpl-shift" class="form-input"><option value="Off">— Off —</option>${allShiftTypes.filter(st=>st.is_active!==false).map(st=>`<option value="Work__${st.id}">${st.start_time.substring(0,5)}-${st.end_time.substring(0,5)} (${st.name})</option>`).join('')}<option value="Annual">Annual</option><option value="Sick">Sick</option><option value="Casual">Casual</option><option value="PH">PH</option><option value="Unpaid">Unpaid</option><option value="Task">Task</option></select></div>
+    </div>`;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" onclick="applyTemplate()"><i class="fas fa-magic"></i> Apply</button>`;
+  openPanel();
+}
+
+function applyTemplate() {
+  const agentFilter = document.getElementById('tmpl-agent').value;
+  const dayFilter   = document.getElementById('tmpl-day').value;
+  const shiftVal    = document.getElementById('tmpl-shift').value;
+  const agents = agentFilter === 'all' ? allAgents : allAgents.filter(a => a.id === agentFilter);
+  const dates  = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+  const days   = dayFilter === 'all' ? dates : dates.filter(d => d.iso === dayFilter);
+  let count = 0;
+  agents.forEach(agent => { days.forEach(d => { if (applyShiftValue(agent.id, d.iso, shiftVal)) count++; }); });
+  closePanel(); showToast(`Template applied to ${count} cell(s)! Press Save.`, 'success');
+}
+
+function onChannelToggle(agentId, date, el) {
+  const key   = `${agentId}_${date}`;
+  const entry = scheduleData[key];
+  if (!entry || entry.day_type !== 'Work') return;
+  const newCh     = (entry.channel || 'Calls') === 'Calls' ? 'WhatsApp' : 'Calls';
+  entry.channel   = newCh;
+  el.textContent  = newCh === 'WhatsApp' ? '💬' : '📞';
+  el.className    = `ch-badge ch-${newCh.toLowerCase()}`;
+  el.title        = `Channel: ${newCh} — click to toggle`;
+  unsaved = true;
+  changedDates.add(date);
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> Save <span style="color:var(--warning);font-size:10px;">●</span>';
+  renderChannelSplit();
+}
+
+function renderChannelSplit() {
+  if (!currentWeek) return;
+  const card = document.getElementById('channel-split-card');
+  const grid = document.getElementById('channel-split-grid');
+  if (!card || !grid) return;
+  card.style.display = 'block';
+
+  const dates = getWeekDates(currentWeek.week_start, currentWeek.week_end);
+
+  // Build per-day calls/WA lists
+  const dayData = dates.map(d => {
+    const calls = [], wa = [];
+    allAgents.forEach(agent => {
+      const key   = `${agent.id}_${d.iso}`;
+      const entry = scheduleData[key];
+      if (!entry || entry.day_type !== 'Work') return;
+      const st    = allShiftTypes.find(s => s.id === entry.shift_type_id);
+      const shift = st ? `${st.start_time.substring(0,5)}-${st.end_time.substring(0,5)}` : '';
+      const obj   = { name: agent.formal_name, shift };
+      (entry.channel === 'WhatsApp' ? wa : calls).push(obj);
+    });
+    return { ...d, calls, wa };
+  });
+
+  // Totals for summary
+  const totalCalls = dayData.reduce((s, d) => s + d.calls.length, 0);
+  const totalWA    = dayData.reduce((s, d) => s + d.wa.length, 0);
+  const sumEl      = document.getElementById('channel-split-summary');
+  if (sumEl) sumEl.innerHTML =
+    `<span style="color:#3B82F6;font-weight:700;">📞 ${totalCalls}</span> &nbsp;
+     <span style="color:#25D366;font-weight:700;">💬 ${totalWA}</span>
+     <span style="color:var(--muted);">assignments this week</span>`;
+
+  const maxRows = Math.max(...dayData.map(d => Math.max(d.calls.length, d.wa.length)), 1);
+
+  // Header
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
+    <thead>
+      <tr>`;
+  dates.forEach(d => {
+    const isToday = d.iso === TODAY;
+    const col = isToday ? 'var(--gold)' : 'var(--text)';
+    html += `<th colspan="2" style="padding:8px 6px;background:var(--surface2);border-bottom:1px solid var(--border);border-right:2px solid var(--border);text-align:center;">
+      <div style="font-weight:700;font-size:11px;color:${col};">${d.dayName}</div>
+      <div style="font-size:10px;color:var(--muted);">${d.display}</div>
+    </th>`;
+  });
+  html += `</tr><tr>`;
+  dates.forEach(d => {
+    html += `
+      <th style="padding:4px 8px;background:rgba(59,130,246,0.08);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:#3B82F6;text-align:center;">📞 ${d.calls ? '' : ''} Calls</th>
+      <th style="padding:4px 8px;background:rgba(37,211,102,0.08);border-bottom:1px solid var(--border);border-right:2px solid var(--border);font-size:10px;font-weight:700;color:#25D366;text-align:center;">💬 WhatsApp</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+
+  for (let r = 0; r < maxRows; r++) {
+    html += `<tr>`;
+    dayData.forEach(d => {
+      const ca = d.calls[r];
+      const wa = d.wa[r];
+      html += `<td style="padding:5px 8px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);vertical-align:top;background:rgba(59,130,246,0.02);">
+        ${ca ? `<div style="font-weight:700;font-size:11px;color:var(--text);white-space:nowrap;">${ca.name.split(' ')[0]}</div><div style="font-size:9px;color:var(--muted);">${ca.shift}</div>` : ''}
+      </td>
+      <td style="padding:5px 8px;border-bottom:1px solid var(--border);border-right:2px solid var(--border);vertical-align:top;background:rgba(37,211,102,0.02);">
+        ${wa ? `<div style="font-weight:700;font-size:11px;color:var(--text);white-space:nowrap;">${wa.name.split(' ')[0]}</div><div style="font-size:9px;color:var(--muted);">${wa.shift}</div>` : ''}
+      </td>`;
+    });
+    html += `</tr>`;
+  }
+
+  // Totals row
+  html += `<tr style="background:var(--surface2);">`;
+  dayData.forEach(d => {
+    html += `
+      <td style="padding:6px 8px;border-top:2px solid var(--border);text-align:center;font-weight:800;font-size:12px;color:#3B82F6;">${d.calls.length}</td>
+      <td style="padding:6px 8px;border-top:2px solid var(--border);border-right:2px solid var(--border);text-align:center;font-weight:800;font-size:12px;color:#25D366;">${d.wa.length}</td>`;
+  });
+  html += `</tr></tbody></table>`;
+
+  grid.innerHTML = html;
+}
+
+loadAll();
+</script>
+<div id="shift-pop-backdrop" onclick="closeShiftPop()"></div>
+<div id="shift-pop"></div>
+</body>
+</html>

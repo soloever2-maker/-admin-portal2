@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOS — Manager View</title>
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* ── FIX SCROLL — override main.css layout locks ── */
+    html, body {
+      height: auto !important;
+      min-height: 100vh;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+    }
+    .admin-layout, .main-content, .page-content { all: unset; }
+
+    body { background: var(--bg); }
+
+    /* ── Wrapper ── */
+    .mv-wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 14px 48px;
+    }
+
+    /* ══════════════════════════════
+       STICKY HEADER
+    ══════════════════════════════ */
+    .mv-header-outer {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      margin-bottom: 16px;
+    }
+    html.light .mv-header-outer {
+      background: rgba(255,255,255,0.92);
+    }
+    html[data-theme="dark"] .mv-header-outer {
+      background: rgba(12,16,25,0.92);
+    }
+
+    .mv-header-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      gap: 10px;
+    }
+
+    /* Left: logo */
+    .mv-logo {
+      display: flex; align-items: center; gap: 9px; min-width: 0; flex-shrink: 0;
+    }
+    .mv-logo-icon {
+      width: 34px; height: 34px; flex-shrink: 0;
+      background: var(--accent-grad);
+      border-radius: var(--r-sm);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: #fff;
+      box-shadow: 0 3px 10px rgba(79,138,249,0.35);
+    }
+    .mv-logo-text { min-width: 0; }
+    .mv-logo-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px; font-weight: 700; color: var(--text);
+      white-space: nowrap; line-height: 1.2;
+    }
+    .mv-logo-sub {
+      font-size: 10px; color: var(--muted);
+      display: flex; align-items: center; gap: 4px;
+      line-height: 1;
+    }
+    .live-dot {
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: #10B981;
+      animation: pulse-live 1.8s infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse-live {
+      0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+      50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(16,185,129,0); }
+    }
+
+    /* Center: clock */
+    .mv-clock-block {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.15;
+    }
+    .mv-clock-time {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .mv-clock-date {
+      font-size: 11px; color: var(--muted); font-weight: 500;
+    }
+
+    /* Right: actions */
+    .mv-header-actions {
+      display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    }
+    .mv-refresh-btn {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 2px; cursor: pointer;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 5px 9px;
+      color: var(--text-dim);
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .mv-refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .mv-refresh-btn i { font-size: 13px; }
+    .mv-refresh-label { font-size: 9px; color: var(--muted); white-space: nowrap; }
+    #refresh-countdown { color: var(--accent); font-weight: 700; }
+
+    /* Progress bar at bottom of header */
+    .mv-progress-bar {
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .mv-progress-fill {
+      height: 100%;
+      background: var(--accent-grad);
+      transition: width 1s linear;
+      width: 100%;
+    }
+
+    /* ── KPI Grid — 2 cols mobile, 5 cols desktop ── */
+    .mv-kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    @media (min-width: 600px) {
+      .mv-kpi-grid { grid-template-columns: repeat(5, 1fr); }
+    }
+
+    /* ── Content — 1 col mobile, 2 col desktop ── */
+    .mv-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    @media (min-width: 700px) {
+      .mv-grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+
+    .mv-grid-full { margin-bottom: 12px; }
+
+    /* ── Shift Table ── */
+    .shift-table { width: 100%; border-collapse: collapse; }
+    .shift-table th {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--muted);
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      text-align: left; background: var(--surface2);
+    }
+    .shift-table td {
+      padding: 9px 12px; border-bottom: 1px solid var(--border);
+      font-size: 12px; color: var(--text);
+    }
+    .shift-table tr:last-child td { border-bottom: none; }
+    .shift-table tr:hover td { background: var(--table-hover); }
+
+    /* ── Shift badge ── */
+    .shift-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 20px;
+      font-size: 10px; font-weight: 700;
+    }
+
+    /* ── Calls Reason Bars ── */
+    .reason-bar-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+    }
+    .reason-bar-row:last-child { border-bottom: none; }
+    .reason-name {
+      font-size: 12px; color: var(--text); min-width: 0; flex: 1;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .reason-bar-wrap { width: 80px; flex-shrink: 0; }
+    .reason-bar-bg { background: var(--surface3); border-radius: 4px; height: 6px; overflow: hidden; }
+    .reason-bar-fill { height: 100%; border-radius: 4px; background: var(--accent-grad); transition: width 0.5s; }
+    .reason-count { font-size: 12px; font-weight: 700; color: var(--text); min-width: 24px; text-align: right; flex-shrink: 0; }
+
+    /* ── Agent Pills ── */
+    .agent-pill {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; border-bottom: 1px solid var(--border);
+    }
+    .agent-pill:last-child { border-bottom: none; }
+    .agent-pill-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--text); }
+    .agent-pill-meta { font-size: 11px; color: var(--muted); }
+
+    /* ── Empty / Error ── */
+    .empty-state { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ── PIN Gate ── */
+    #pin-gate {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .pin-card {
+      width: 100%; max-width: 320px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      padding: 28px 24px;
+      box-shadow: var(--shadow-modal);
+      text-align: center;
+    }
+    .pin-icon {
+      width: 48px; height: 48px;
+      background: var(--accent-grad);
+      border-radius: var(--r-md);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; color: #fff;
+      margin: 0 auto 16px;
+    }
+    .pin-title { font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+    .pin-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+    .pin-input {
+      width: 100%; box-sizing: border-box;
+      padding: 11px; font-size: 22px; letter-spacing: 10px; text-align: center;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md);
+      color: var(--text); outline: none; font-family: monospace;
+      margin-bottom: 12px;
+    }
+    .pin-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,138,249,0.12); }
+    .pin-error { font-size: 12px; color: var(--danger); margin-bottom: 8px; min-height: 16px; }
+
+    #main-content { display: none; }
+
+    /* ── KPI card smaller on mobile ── */
+    .kpi-card { padding: 14px 12px; }
+    .kpi-icon { font-size: 18px; margin-bottom: 8px; }
+    .kpi-value { font-size: 22px; }
+    @media (min-width: 600px) {
+      .kpi-card { padding: 18px 16px; }
+      .kpi-icon { font-size: 20px; margin-bottom: 10px; }
+      .kpi-value { font-size: 26px; }
+    }
+
+    /* ── Direction bars ── */
+    .dir-row { margin-bottom: 14px; }
+    .dir-row:last-child { margin-bottom: 0; }
+    .dir-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text); }
+    .dir-bar-bg { background: var(--surface3); border-radius: 6px; height: 8px; overflow: hidden; }
+    .dir-bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s; }
+
+    /* ── Stat boxes for MTD ── */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--r-md); padding: 12px;
+    }
+    .stat-box-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+    .stat-box-value { font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+<!-- ═══ PIN GATE ═══ -->
+<div id="pin-gate">
+  <div class="pin-card">
+    <div class="pin-icon"><i class="fas fa-chart-line"></i></div>
+    <div class="pin-title">Manager View</div>
+    <div class="pin-sub">أدخل الـ PIN للوصول</div>
+    <input type="password" class="pin-input" id="pin-input"
+      maxlength="6" placeholder="••••" autocomplete="off"
+      inputmode="numeric" oninput="checkPin()">
+    <div class="pin-error" id="pin-error"></div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="submitPin()">
+      <i class="fas fa-unlock"></i> دخول
+    </button>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main-content">
+
+  <!-- Sticky Header -->
+  <div class="mv-header-outer">
+    <div class="mv-header-inner">
+
+      <!-- Left: Logo -->
+      <div class="mv-logo">
+        <div class="mv-logo-icon"><i class="fas fa-plane-departure"></i></div>
+        <div class="mv-logo-text">
+          <div class="mv-logo-title">NOS Manager</div>
+          <div class="mv-logo-sub"><span class="live-dot"></span> Live</div>
+        </div>
+      </div>
+
+      <!-- Center: Clock -->
+      <div class="mv-clock-block">
+        <div class="mv-clock-time" id="hdr-time">—</div>
+        <div class="mv-clock-date" id="hdr-date">—</div>
+      </div>
+
+      <!-- Right: Actions -->
+      <div class="mv-header-actions">
+        <button class="mv-refresh-btn" onclick="refreshAll()" title="Refresh now">
+          <i class="fas fa-sync-alt" id="refresh-icon"></i>
+          <span class="mv-refresh-label">in <span id="refresh-countdown">120</span>s</span>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon" id="theme-icon"></i>
+        </button>
+      </div>
+
+    </div>
+    <!-- Countdown progress bar -->
+    <div class="mv-progress-bar">
+      <div class="mv-progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+<div class="mv-wrap">
+
+  <!-- KPI Strip — 5 cards (no "Not Logged In") -->
+  <div class="mv-kpi-grid">
+    <div class="kpi-card green">
+      <span class="kpi-icon">✅</span>
+      <div class="kpi-label">On Shift</div>
+      <div class="kpi-value" id="kpi-working">—</div>
+      <div class="kpi-sub">Today</div>
+    </div>
+    <div class="kpi-card blue">
+      <span class="kpi-icon">📞</span>
+      <div class="kpi-label">Calls Today</div>
+      <div class="kpi-value" id="kpi-calls">—</div>
+      <div class="kpi-sub" id="kpi-calls-sub">Loading...</div>
+    </div>
+    <div class="kpi-card red">
+      <span class="kpi-icon">🏖️</span>
+      <div class="kpi-label">On Leave</div>
+      <div class="kpi-value" id="kpi-leave">—</div>
+      <div class="kpi-sub">Today</div>
+    </div>
+    <div class="kpi-card gold">
+      <span class="kpi-icon">📊</span>
+      <div class="kpi-label">Conformance</div>
+      <div class="kpi-value" id="kpi-conf">—</div>
+      <div class="kpi-sub" id="kpi-conf-sub">Today</div>
+    </div>
+    <div class="kpi-card purple">
+      <span class="kpi-icon">📋</span>
+      <div class="kpi-label">Pending</div>
+      <div class="kpi-value" id="kpi-requests">—</div>
+      <div class="kpi-sub">Requests</div>
+    </div>
+  </div>
+
+  <!-- ══ xCALLY Live Agents ══ -->
+  <div class="mv-grid-full">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-satellite-dish" style="color:#10B981" id="xcl-icon"></i>
+          xCALLY Live Agents
+        </div>
+        <span style="font-size:11px;color:var(--muted);" id="xcl-updated">—</span>
+      </div>
+
+      <!-- فورم الاتصال (يظهر مرة واحدة) -->
+      <div id="xcl-connect" style="padding:16px 14px;display:none;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+          ادخل بيانات أدمن xCALLY (بتتحفظ في المتصفح للجلسة الحالية بس)
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="xcl-user" placeholder="Username" value="admin"
+                 style="flex:1;min-width:130px;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);">
+          <input id="xcl-pass" type="password" placeholder="Password"
+                 style="flex:1;min-width:130px;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);">
+          <button class="btn btn-primary" onclick="xclConnect()" style="padding:9px 18px;">
+            <i class="fas fa-link"></i> Connect
+          </button>
+        </div>
+        <div id="xcl-err" style="font-size:12px;color:#e3342f;margin-top:8px;display:none;"></div>
+      </div>
+
+      <!-- ملخص + جدول الايجنتس -->
+      <div id="xcl-board" style="display:none;">
+        <div style="display:flex;gap:14px;padding:12px 14px 0;flex-wrap:wrap;font-size:12px;">
+          <span>🟢 Idle: <b id="xcl-idle">—</b></span>
+          <span>📞 Busy: <b id="xcl-busy" style="color:#e3342f;">—</b></span>
+          <span>☕ Pause: <b id="xcl-pause" style="color:#F59E0B;">—</b></span>
+          <span>⚫ Offline: <b id="xcl-off" style="color:var(--muted);">—</b></span>
+        </div>
+        <div style="overflow-x:auto;padding:8px 14px 14px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="color:var(--muted);text-align:left;">
+                <th style="padding:6px 8px;">Agent</th>
+                <th style="padding:6px 8px;">Voice</th>
+                <th style="padding:6px 8px;">Chat</th>
+                <th style="padding:6px 8px;">WhatsApp</th>
+                <th style="padding:6px 8px;">Pause</th>
+              </tr>
+            </thead>
+            <tbody id="xcl-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- وضع iframe الاحتياطي -->
+      <div id="xcl-iframe-wrap" style="display:none;padding:10px 14px 14px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+          ⚠ الاتصال المباشر مرفوض من xCALLY — بنعرض الشاشة الأصلية. لازم تكون عامل login في xCALLY في نفس المتصفح
+          (<a href="#" onclick="window.open(xclUrl,'_blank');return false;">افتح xCALLY</a>)
+        </div>
+        <iframe id="xcl-frame" src="about:blank"
+                style="width:100%;height:480px;border:1px solid var(--border);border-radius:10px;"></iframe>
+      </div>
+
+      <div id="xcl-loading" style="padding:20px;" class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 1: Shifts + Calls by Reason -->
+  <div class="mv-grid-2">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-user-clock" style="color:var(--accent)"></i>
+          Today's Shift
+        </div>
+        <span class="badge badge-success" id="shift-badge">—</span>
+      </div>
+      <div id="shift-list">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-phone-volume" style="color:#10B981"></i>
+          Calls by Reason
+        </div>
+        <span class="badge badge-info" id="calls-badge">—</span>
+      </div>
+      <div id="calls-reason-list">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: On Leave (full width on mobile, half on desktop) + Calls Direction -->
+  <div class="mv-grid-2">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-umbrella-beach" style="color:#F59E0B"></i>
+          On Leave Today
+        </div>
+        <span class="badge badge-warning" id="leave-badge">—</span>
+      </div>
+      <div id="leave-list">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-exchange-alt" style="color:#8B5CF6"></i>
+          Calls Direction
+        </div>
+      </div>
+      <div style="padding:16px 14px;" id="calls-direction-list">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: MTD Summary (full width) -->
+  <div class="mv-grid-full">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <i class="fas fa-calendar-alt" style="color:var(--accent)"></i>
+          Month Summary
+        </div>
+        <span style="font-size:11px;color:var(--muted);" id="mtd-month-label">—</span>
+      </div>
+      <div style="padding:14px;" id="mtd-summary">
+        <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────
+const MANAGER_PIN  = '1234';
+const REFRESH_SECS = 120;
+const SESSION_KEY  = 'nos-manager-pin';
+
+// ── Supabase ──────────────────────────────────────
+const SUPABASE_URL = 'https://xzxdaupwwwdcwfnqweub.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6eGRhdXB3d3dkY3dmbnF3ZXViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTMxMzk1MCwiZXhwIjoyMDkwODg5OTUwfQ.hloV3fkC_KIa36hYgxz33fdTWvH_0AX28cZaiohPcDQ';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+
+// ── Date Helpers ──────────────────────────────────
+const getToday      = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+const getMonthStart = () => getToday().slice(0, 7) + '-01';
+
+// ── PIN ───────────────────────────────────────────
+function checkPin() {
+  document.getElementById('pin-error').textContent = '';
+  if (document.getElementById('pin-input').value.length >= MANAGER_PIN.length) submitPin();
+}
+function submitPin() {
+  const v = document.getElementById('pin-input').value;
+  if (v === MANAGER_PIN) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    document.getElementById('pin-gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    init();
+  } else {
+    document.getElementById('pin-error').textContent = '❌ PIN خطأ، حاول تاني';
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').focus();
+  }
+}
+document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitPin(); });
+
+// ── Theme ─────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-icon').className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+}
+
+// ── Clock ─────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('hdr-date').textContent =
+    now.toLocaleDateString('en-GB', { timeZone:'Africa/Cairo', weekday:'short', day:'numeric', month:'short', year:'numeric' });
+  document.getElementById('hdr-time').textContent =
+    now.toLocaleTimeString('en-GB', { timeZone:'Africa/Cairo', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Auto Refresh ──────────────────────────────────
+let cdLeft = REFRESH_SECS, cdTimer = null;
+function startCountdown() {
+  clearInterval(cdTimer);
+  cdLeft = REFRESH_SECS;
+  document.getElementById('refresh-countdown').textContent = cdLeft;
+  cdTimer = setInterval(() => {
+    cdLeft--;
+    document.getElementById('refresh-countdown').textContent = cdLeft;
+    if (cdLeft <= 0) { clearInterval(cdTimer); refreshAll(); }
+  }, 1000);
+}
+
+// ── Shift badge color ─────────────────────────────
+function shiftBadge(name) {
+  const n = (name || '').toLowerCase();
+  let bg = 'rgba(16,185,129,0.15)', color = '#10B981';
+  if (n.includes('afternoon')) { bg = 'rgba(14,165,233,0.15)'; color = '#0EA5E9'; }
+  else if (n.includes('evening')) { bg = 'rgba(244,208,63,0.15)'; color = '#D4B800'; }
+  else if (n.includes('night')) { bg = 'rgba(99,102,241,0.15)'; color = '#6366F1'; }
+  return `<span class="shift-badge" style="background:${bg};color:${color};">${name || 'Work'}</span>`;
+}
+
+const LEAVE_STYLE = {
+  'Annual': { bg:'rgba(139,92,246,0.15)', color:'#8B5CF6', icon:'🏖️' },
+  'Sick':   { bg:'rgba(239,68,68,0.15)',  color:'#EF4444', icon:'🤒' },
+  'Casual': { bg:'rgba(245,158,11,0.15)', color:'#F59E0B', icon:'💼' },
+  'PH':     { bg:'rgba(59,130,246,0.15)', color:'#3B82F6', icon:'🗓️' },
+};
+
+// ── LOAD: Shifts ──────────────────────────────────
+async function loadShifts() {
+  const el = document.getElementById('shift-list');
+  try {
+    const { data } = await db.from('schedule')
+      .select('agent_id, agents(formal_name), shift_types(name, start_time, end_time)')
+      .eq('shift_date', getToday())
+      .eq('day_type', 'Work')
+      .order('shift_types(start_time)', { ascending: true });
+
+    const n = data?.length || 0;
+    document.getElementById('kpi-working').textContent = n;
+    document.getElementById('shift-badge').textContent = `${n} agents`;
+
+    if (!n) { el.innerHTML = '<div class="empty-state">No shifts scheduled today</div>'; return; }
+
+    el.innerHTML = `
+      <table class="shift-table">
+        <thead><tr><th>#</th><th>Agent</th><th>Shift</th><th>Hours</th></tr></thead>
+        <tbody>${data.map((s, i) => `
+          <tr>
+            <td style="color:var(--muted);font-size:11px;">${i+1}</td>
+            <td style="font-weight:600;">${s.agents?.formal_name || '—'}</td>
+            <td>${shiftBadge(s.shift_types?.name)}</td>
+            <td style="color:var(--muted);font-size:11px;">
+              ${s.shift_types?.start_time?.slice(0,5)||'—'} → ${s.shift_types?.end_time?.slice(0,5)||'—'}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Error loading shifts</div>';
+  }
+}
+
+// ── LOAD: Calls by Reason ─────────────────────────
+async function loadCallsByReason() {
+  const el = document.getElementById('calls-reason-list');
+  try {
+    const t = getToday();
+    const { data } = await db.from('call_logs')
+      .select('call_reason')
+      .gte('logged_at', t + 'T00:00:00')
+      .lte('logged_at', t + 'T23:59:59');
+
+    const total = data?.length || 0;
+    document.getElementById('kpi-calls').textContent = total;
+    document.getElementById('kpi-calls-sub').textContent = total ? `${total} logged` : 'No calls yet';
+    document.getElementById('calls-badge').textContent = `${total} total`;
+
+    if (!total) { el.innerHTML = '<div class="empty-state">No calls yet today</div>'; return; }
+
+    const counts = {};
+    data.forEach(r => { const k = r.call_reason || 'Unspecified'; counts[k] = (counts[k]||0)+1; });
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const max = sorted[0][1];
+
+    el.innerHTML = sorted.map(([reason, count]) => `
+      <div class="reason-bar-row">
+        <span class="reason-name" title="${reason}">${reason}</span>
+        <div class="reason-bar-wrap">
+          <div class="reason-bar-bg">
+            <div class="reason-bar-fill" style="width:${Math.round(count/max*100)}%"></div>
+          </div>
+        </div>
+        <span class="reason-count">${count}</span>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Error</div>';
+  }
+}
+
+// ── LOAD: On Leave ────────────────────────────────
+async function loadOnLeave() {
+  const el = document.getElementById('leave-list');
+  try {
+    const { data } = await db.from('schedule')
+      .select('day_type, agents(formal_name)')
+      .eq('shift_date', getToday())
+      .in('day_type', ['Annual','Sick','Casual','PH']);
+
+    const n = data?.length || 0;
+    document.getElementById('kpi-leave').textContent = n;
+    document.getElementById('leave-badge').textContent = `${n} agent${n!==1?'s':''}`;
+
+    if (!n) { el.innerHTML = '<div class="empty-state">No one on leave today 🎉</div>'; return; }
+    el.innerHTML = data.map(s => {
+      const cfg = LEAVE_STYLE[s.day_type] || { bg:'rgba(92,107,133,0.15)', color:'var(--muted)', icon:'📌' };
+      return `
+        <div class="agent-pill">
+          <span style="font-size:15px;">${cfg.icon}</span>
+          <span class="agent-pill-name">${s.agents?.formal_name || '—'}</span>
+          <span class="shift-badge" style="background:${cfg.bg};color:${cfg.color};">${s.day_type}</span>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Error</div>';
+  }
+}
+
+// ── LOAD: Calls Direction ─────────────────────────
+async function loadCallsDirection() {
+  const el = document.getElementById('calls-direction-list');
+  try {
+    const t = getToday();
+    const { data } = await db.from('call_logs')
+      .select('call_direction')
+      .gte('logged_at', t + 'T00:00:00')
+      .lte('logged_at', t + 'T23:59:59');
+
+    if (!data?.length) { el.innerHTML = '<div class="empty-state">No calls yet</div>'; return; }
+
+    const total    = data.length;
+    const inbound  = data.filter(r=>(r.call_direction||'').toLowerCase().includes('inbound')).length;
+    const outbound = data.filter(r=>(r.call_direction||'').toLowerCase().includes('outbound')).length;
+    const other    = total - inbound - outbound;
+
+    const row = (label, count, color) => {
+      const pct = Math.round(count/total*100);
+      return `
+        <div class="dir-row">
+          <div class="dir-label">
+            <span>${label}</span>
+            <span style="color:${color};font-weight:700;">${count} <span style="color:var(--muted);font-weight:400;">(${pct}%)</span></span>
+          </div>
+          <div class="dir-bar-bg"><div class="dir-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+        </div>`;
+    };
+
+    el.innerHTML =
+      row('📥 Inbound',  inbound,  '#10B981') +
+      row('📤 Outbound', outbound, '#4F8AF9') +
+      (other ? row('📎 Other', other, '#F59E0B') : '');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Error</div>';
+  }
+}
+
+// ── LOAD: MTD + Conformance + Requests ───────────
+async function loadMTD() {
+  const el = document.getElementById('mtd-summary');
+  try {
+    const today = getToday(), ms = getMonthStart();
+    document.getElementById('mtd-month-label').textContent =
+      new Date().toLocaleString('default', { month:'long', year:'numeric' });
+
+    const [
+      { count: mtdCalls },
+      { count: mtdLeave },
+      { count: pending },
+      { data: confData },
+      { data: todayConf }
+    ] = await Promise.all([
+      db.from('call_logs').select('*',{count:'exact',head:true}).gte('logged_at',ms+'T00:00:00').lte('logged_at',today+'T23:59:59'),
+      db.from('schedule').select('*',{count:'exact',head:true}).gte('shift_date',ms).lte('shift_date',today).in('day_type',['Annual','Sick','Casual']),
+      db.from('requests').select('*',{count:'exact',head:true}).eq('status','Pending'),
+      db.from('daily_performance').select('conformance').gte('perf_date',ms).lte('perf_date',today),
+      db.from('daily_performance').select('conformance').eq('perf_date',today),
+    ]);
+
+    document.getElementById('kpi-requests').textContent = pending || 0;
+
+    // Today conformance
+    if (todayConf?.length) {
+      const avg = Math.round(todayConf.reduce((s,r)=>s+(r.conformance||0),0)/todayConf.length);
+      document.getElementById('kpi-conf').textContent = avg+'%';
+      document.getElementById('kpi-conf-sub').textContent = `${todayConf.length} agents`;
+    } else {
+      document.getElementById('kpi-conf').textContent = '—';
+      document.getElementById('kpi-conf-sub').textContent = 'No data yet';
+    }
+
+    // MTD conformance
+    const mtdAvgConf = confData?.length
+      ? Math.round(confData.reduce((s,r)=>s+(r.conformance||0),0)/confData.length)
+      : null;
+
+    el.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div class="stat-box-label">📞 MTD Calls</div>
+          <div class="stat-box-value" style="color:var(--accent);">${mtdCalls||0}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">🏖️ Leave Days (MTD)</div>
+          <div class="stat-box-value" style="color:#F59E0B;">${mtdLeave||0}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">📋 Pending Requests</div>
+          <div class="stat-box-value" style="color:#8B5CF6;">${pending||0}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">📊 MTD Conformance</div>
+          <div class="stat-box-value" style="color:#10B981;">${mtdAvgConf!==null?mtdAvgConf+'%':'—'}</div>
+        </div>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Error loading</div>';
+  }
+}
+
+// ── REFRESH ───────────────────────────────────────
+let refreshing = false;
+async function refreshAll() {
+  if (refreshing) return;
+  refreshing = true;
+  document.getElementById('refresh-icon').classList.add('fa-spin');
+  try {
+    await Promise.all([
+      loadShifts(),
+      loadCallsByReason(),
+      loadOnLeave(),
+      loadCallsDirection(),
+      loadMTD(),
+    ]);
+  } finally {
+    refreshing = false;
+    document.getElementById('refresh-icon').classList.remove('fa-spin');
+    startCountdown();
+  }
+}
+
+function init() { refreshAll(); }
+
+// ── BOOT ──────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+    document.getElementById('pin-gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    init();
+  } else {
+    document.getElementById('pin-input').focus();
+  }
+});
+</script>
+
+<script>
+/* ═══════════ xCALLY Live Agents ═══════════ */
+const xclUrl = 'https://172.16.1.20';          // ← عنوان سيرفر xCALLY
+const xclRefreshMs = 4000;
+let xclToken = sessionStorage.getItem('xc-token') || null;
+let xclTimer = null;
+
+function xclShow(part){
+  ['xcl-connect','xcl-board','xcl-iframe-wrap','xcl-loading'].forEach(id =>
+    document.getElementById(id).style.display = (id === part ? '' : 'none'));
+}
+
+async function xclConnect(){
+  const err = document.getElementById('xcl-err');
+  err.style.display = 'none';
+  try{
+    const res = await fetch(xclUrl + '/api/auth/local', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name: document.getElementById('xcl-user').value.trim(),
+        password: document.getElementById('xcl-pass').value
+      })
+    });
+    if(!res.ok) throw new Error('بيانات الدخول غلط (HTTP ' + res.status + ')');
+    xclToken = (await res.json()).token;
+    sessionStorage.setItem('xc-token', xclToken);
+    xclStart();
+  }catch(e){
+    if (e instanceof TypeError) xclIframe();     // CORS / شبكة → iframe
+    else { err.textContent = e.message; err.style.display = 'block'; }
+  }
+}
+
+function xclBadge(status, pause, online){
+  const st = 'display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600;';
+  if (online === false) return `<span style="${st}background:rgba(100,116,139,.15);color:#64748b;">OFFLINE</span>`;
+  if (pause)            return `<span style="${st}background:rgba(245,158,11,.15);color:#F59E0B;">PAUSE</span>`;
+  const s = String(status || 'idle').toLowerCase();
+  if (/busy|talk|call|ring|progress/.test(s))
+    return `<span style="${st}background:rgba(227,52,47,.15);color:#e3342f;">${s.toUpperCase()}</span>`;
+  return `<span style="${st}background:rgba(16,185,129,.15);color:#10B981;">IDLE</span>`;
+}
+
+async function xclRefresh(){
+  try{
+    const res = await fetch(xclUrl + '/api/rpc/agents', {
+      headers:{ Authorization:'Bearer ' + xclToken }
+    });
+    if (res.status === 401){                      // التوكن انتهى → اطلب الدخول تاني
+      xclToken = null; sessionStorage.removeItem('xc-token');
+      clearInterval(xclTimer); xclTimer = null;
+      xclShow('xcl-connect'); return;
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const agents = data.rows || data;
+    let idle=0, busy=0, pause=0, off=0;
+
+    document.getElementById('xcl-body').innerHTML = agents.map(a=>{
+      const name = a.fullname || a.name;
+      const s = String(a.voiceStatus || a.status || '').toLowerCase();
+      if (a.online === false) off++;
+      else if (a.pause) pause++;
+      else if (/busy|talk|call|ring|progress/.test(s)) busy++;
+      else idle++;
+      return `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:7px 8px;">${name || '-'} <span style="color:var(--muted);font-size:10px;">&lt;${a.internal||''}&gt;</span></td>
+        <td style="padding:7px 8px;">${xclBadge(a.voiceStatus || a.status, a.pause, a.online)}</td>
+        <td style="padding:7px 8px;">${xclBadge(a.chatStatus, false, a.online)}</td>
+        <td style="padding:7px 8px;">${xclBadge(a.whatsappStatus, false, a.online)}</td>
+        <td style="padding:7px 8px;color:var(--muted);font-size:11px;">${a.pause ? (a.pauseType || 'Paused') : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('xcl-idle').textContent  = idle;
+    document.getElementById('xcl-busy').textContent  = busy;
+    document.getElementById('xcl-pause').textContent = pause;
+    document.getElementById('xcl-off').textContent   = off;
+    document.getElementById('xcl-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-GB');
+    document.getElementById('xcl-icon').style.color = '#10B981';
+  }catch(e){
+    document.getElementById('xcl-icon').style.color = '#e3342f';
+    if (e instanceof TypeError) xclIframe();
+  }
+}
+
+function xclStart(){
+  xclShow('xcl-board');
+  xclRefresh();
+  clearInterval(xclTimer);
+  xclTimer = setInterval(xclRefresh, xclRefreshMs);
+}
+
+function xclIframe(){
+  clearInterval(xclTimer); xclTimer = null;
+  document.getElementById('xcl-frame').src = xclUrl + '/voice/realtime/agents';
+  xclShow('xcl-iframe-wrap');
+}
+
+// البداية: لو فيه توكن محفوظ من قبل استخدمه، غير كده اعرض فورم الاتصال
+if (xclToken) xclStart();
+else xclShow('xcl-connect');
+
+// وقف التحديث لما التاب مخفية
+document.addEventListener('visibilitychange', ()=>{
+  if (document.hidden) { clearInterval(xclTimer); xclTimer = null; }
+  else if (xclToken && !xclTimer && document.getElementById('xcl-board').style.display !== 'none')
+    { xclRefresh(); xclTimer = setInterval(xclRefresh, xclRefreshMs); }
+});
+</script>
+</body>
+</html>

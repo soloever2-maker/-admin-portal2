@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Requests</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.inbox-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.inbox-card::before {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 0 14px 14px 0;
+}
+.inbox-card.pending::before   { background: var(--gold); }
+.inbox-card.approved::before  { background: #10B981; }
+.inbox-card.rejected::before  { background: #EF4444; }
+
+.inbox-card:hover {
+  border-color: rgba(212,175,55,0.3);
+  background: rgba(212,175,55,0.02);
+  transform: translateX(-2px);
+}
+
+.inbox-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+
+.inbox-body { flex: 1; min-width: 0; }
+.inbox-title { font-weight: 700; font-size: 14px; color: var(--text); margin-bottom: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.inbox-detail { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inbox-meta { font-size: 11px; color: var(--muted); white-space: nowrap; text-align: left; flex-shrink: 0; }
+.inbox-meta .time { font-size: 11px; color: var(--muted); }
+.inbox-meta .go-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 8px;
+  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.2);
+  color: var(--gold); font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all 0.2s; margin-top: 6px;
+  text-decoration: none; white-space: nowrap;
+}
+.inbox-meta .go-btn:hover { background: rgba(212,175,55,0.2); }
+
+.unread-dot {
+  width: 8px; height: 8px;
+  background: var(--gold);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.filter-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  align-items: center;
+}
+.filter-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.filter-chip:hover  { border-color: var(--border2); color: var(--text); }
+.filter-chip.active { border-color: var(--gold); color: var(--gold); background: rgba(212,175,55,0.08); }
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-key   { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.detail-value { font-weight: 600; color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Requests</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Inbox — All Agent Requests
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="loadRequests()">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+        <div class="kpi-card gold"><span class="kpi-icon">📋</span><div class="kpi-label">Total</div><div class="kpi-value" id="k-total">—</div></div>
+        <div class="kpi-card orange"><span class="kpi-icon">⏳</span><div class="kpi-label">Pending</div><div class="kpi-value" id="k-pending">—</div></div>
+        <div class="kpi-card green"><span class="kpi-icon">✅</span><div class="kpi-label">Approved</div><div class="kpi-value" id="k-approved">—</div></div>
+        <div class="kpi-card red"><span class="kpi-icon">❌</span><div class="kpi-label">Rejected</div><div class="kpi-value" id="k-rejected">—</div></div>
+        <div class="kpi-card blue"><span class="kpi-icon">📅</span><div class="kpi-label">Today</div><div class="kpi-value" id="k-today">—</div></div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="section-card fade-up" style="margin-bottom:16px;">
+        <div class="section-body" style="padding:14px 18px;">
+          <div class="filter-strip">
+            <div style="position:relative;flex:1;min-width:180px;">
+              <i class="fas fa-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;"></i>
+              <input type="text" class="form-input" style="padding-right:36px;" placeholder="Search agent..." oninput="filterSearch=this.value;renderList()">
+            </div>
+
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <div class="filter-chip active" onclick="setTypeFilter('',this)">All</div>
+              <div class="filter-chip" onclick="setTypeFilter('Excuse',this)">⚠️ Excuse</div>
+              <div class="filter-chip" onclick="setTypeFilter('Time Off',this)">🏖️ Time Off</div>
+              <div class="filter-chip" onclick="setTypeFilter('Missing Punch',this)">👆 Missing Punch</div>
+              <div class="filter-chip" onclick="setTypeFilter('Shift Swap',this)">🔄 Shift Swap</div>
+              <div class="filter-chip" onclick="setTypeFilter('Schedule Request',this)">📅 Schedule</div>
+              <div class="filter-chip" onclick="setTypeFilter('Break Change',this)">☕ Break Change</div>
+            </div>
+
+            <select class="form-input" style="width:auto;padding:8px 12px;" onchange="filterStatus=this.value;renderList()">
+              <option value="">All Status</option>
+              <option value="Pending">⏳ Pending</option>
+              <option value="Approved">✅ Approved</option>
+              <option value="Rejected">❌ Rejected</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- INBOX LIST -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-inbox" style="color:var(--gold)"></i>
+            <span id="list-title">All Requests</span>
+          </div>
+          <span id="list-count" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+        <div class="section-body" id="inbox-list" style="padding:16px;">
+          <div class="loading-wrap"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Request Details</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon(); 
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+
+let allRequests = [];
+let filterSearch = '';
+let filterType   = '';
+let filterStatus = '';
+
+const TODAY = getToday();
+
+// ── Type Config ──
+const TYPE_CONFIG = {
+  'Excuse':           { icon:'⚠️',  color:'rgba(245,158,11,0.1)',  border:'rgba(245,158,11,0.2)',  page:'../pages/excuses.html',  label:'Excuses' },
+  'Time Off':         { icon:'🏖️',  color:'rgba(139,92,246,0.1)',  border:'rgba(139,92,246,0.2)',  page:'../pages/requests.html', label:'Go to Page' },
+  'Missing Punch':    { icon:'👆',  color:'rgba(239,68,68,0.1)',   border:'rgba(239,68,68,0.2)',   page:'../pages/requests.html', label:'Go to Page' },
+  'Shift Swap':       { icon:'🔄',  color:'rgba(59,130,246,0.1)',  border:'rgba(59,130,246,0.2)',  page:'../pages/requests.html', label:'Go to Page' },
+  'Schedule Request': { icon:'📅',  color:'rgba(212,175,55,0.1)',  border:'rgba(212,175,55,0.2)',  page:'../pages/schedule.html', label:'Schedule' },
+  'Break Change':     { icon:'☕',  color:'rgba(16,185,129,0.1)',  border:'rgba(16,185,129,0.2)',  page:'../pages/breaks.html',   label:'Breaks' },
+};
+
+const DEFAULT_CONFIG = { icon:'📄', color:'rgba(107,122,153,0.1)', border:'rgba(107,122,153,0.2)', page:'#', label:'View' };
+// ── Load ──
+async function loadRequests() {
+  document.getElementById('inbox-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  try {
+    const { data, error } = await db.from('requests').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    allRequests = data || [];
+    updateKPIs();
+    renderList();
+  } catch(e) {
+    document.getElementById('inbox-list').innerHTML = `<div class="empty-state"><span class="empty-icon">❌</span>Failed: ${e.message}</div>`;
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── KPIs ──
+function updateKPIs() {
+  document.getElementById('k-total').innerText    = allRequests.length;
+  document.getElementById('k-pending').innerText  = allRequests.filter(r=>r.status==='Pending').length;
+  document.getElementById('k-approved').innerText = allRequests.filter(r=>r.status==='Approved').length;
+  document.getElementById('k-rejected').innerText = allRequests.filter(r=>r.status==='Rejected').length;
+  document.getElementById('k-today').innerText    = allRequests.filter(r=>r.created_at?.startsWith(TODAY)).length;
+}
+
+// ── Render List ──
+function renderList() {
+  const listEl = document.getElementById('inbox-list');
+  let filtered = allRequests;
+
+  if (filterSearch) {
+    const q = filterSearch.toLowerCase();
+    filtered = filtered.filter(r => r.agent_name?.toLowerCase().includes(q));
+  }
+  if (filterType)   filtered = filtered.filter(r => r.type   === filterType);
+  if (filterStatus) filtered = filtered.filter(r => r.status === filterStatus);
+
+  document.getElementById('list-count').innerText = filtered.length + ' request(s)';
+  document.getElementById('list-title').innerText = filterType ? filterType + ' Requests' : 'All Requests';
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="empty-state"><span class="empty-icon">📭</span>No requests found</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(r => {
+    const cfg     = TYPE_CONFIG[r.type] || DEFAULT_CONFIG;
+    const details = formatDetails(r);
+    const isPending = r.status === 'Pending';
+
+    return `
+      <div class="inbox-card ${r.status.toLowerCase()}" onclick="viewRequest('${r.id}')">
+        <!-- Icon -->
+        <div class="inbox-icon" style="background:${cfg.color};border:1px solid ${cfg.border};">
+          ${cfg.icon}
+        </div>
+
+        <!-- Body -->
+        <div class="inbox-body">
+          <div class="inbox-title">
+            <strong>${r.agent_name || '—'}</strong>
+            <span class="badge" style="font-size:10px;background:${cfg.color};border:1px solid ${cfg.border};color:var(--text);">${r.type}</span>
+            ${isPending ? '<span class="unread-dot"></span>' : ''}
+          </div>
+          <div class="inbox-detail">${details}</div>
+        </div>
+
+        <!-- Meta -->
+        <div class="inbox-meta">
+          <div class="time">${formatDateTime(r.created_at)}</div>
+          ${statusBadge(r.status)}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── View Detail ──
+function viewRequest(id) {
+  const r = allRequests.find(x => x.id === id);
+  if (!r) return;
+
+  const cfg = TYPE_CONFIG[r.type] || DEFAULT_CONFIG;
+
+  let detailHtml = '';
+  try {
+    const d = typeof r.details === 'string' ? JSON.parse(r.details) : (r.details || {});
+    const filtered = Object.entries(d).filter(([k]) => !['draft','week_id'].includes(k));
+    detailHtml = filtered.map(([k,v]) => `
+      <div class="detail-row">
+        <span class="detail-key">${k.replace(/_/g,' ')}</span>
+        <span class="detail-value">${Array.isArray(v) ? v.join(', ') : (v||'—')}</span>
+      </div>
+    `).join('');
+  } catch {
+    detailHtml = `<div class="detail-row"><span class="detail-value">${r.details||'—'}</span></div>`;
+  }
+
+  document.getElementById('panel-title').innerText = `${cfg.icon} ${r.type}`;
+  document.getElementById('panel-body').innerHTML = `
+
+    <!-- Agent Card -->
+    <div style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--surface2);border-radius:14px;margin-bottom:20px;">
+      <div class="agent-avatar" style="width:46px;height:46px;font-size:15px;flex-shrink:0;">
+        ${initials(r.agent_name)}
+      </div>
+      <div>
+        <div style="font-weight:800;font-size:15px;color:var(--text);">${r.agent_name || '—'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">${formatDateTime(r.created_at)}</div>
+      </div>
+      <div style="margin-right:auto;">${statusBadge(r.status)}</div>
+    </div>
+
+    <!-- Details -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Request Details</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:12px 16px;margin-bottom:20px;">
+      ${detailHtml || '<div style="color:var(--muted);font-size:13px;padding:8px 0;">No details available</div>'}
+    </div>
+
+    <!-- Admin Note -->
+    ${r.admin_note ? `
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Admin Note</div>
+      <div style="background:rgba(212,175,55,0.06);border:1px solid rgba(212,175,55,0.15);border-radius:12px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--text);">
+        ${r.admin_note}
+      </div>
+    ` : ''}
+
+    <!-- Go To Page Info -->
+    <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <i class="fas fa-info-circle" style="color:#10B981;font-size:16px;flex-shrink:0;"></i>
+      <div style="font-size:13px;color:var(--muted);">
+        To handle this request, go to
+        <strong style="color:var(--text);">${cfg.label}</strong>
+      </div>
+    </div>
+  `;
+  
+const showActions = r.status === 'Pending' && r.type !== 'Excuse' && r.type !== 'Break Change';
+
+document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Close</button>
+    ${showActions ? `
+      <button class="btn btn-danger" onclick="rejectRequest('${r.id}')">
+        <i class="fas fa-times"></i> Reject
+      </button>
+      <button class="btn btn-success" onclick="approveRequest('${r.id}')">
+        <i class="fas fa-check"></i> Approve
+      </button>
+    ` : `
+      <a href="${cfg.page}" class="btn btn-primary" style="text-decoration:none;">
+        <i class="fas fa-external-link-alt"></i> ${cfg.label}
+      </a>
+    `}
+  `;  
+  openPanel();
+}
+
+async function approveRequest(id) {
+  await db.from('requests').update({ status:'Approved', updated_at: new Date().toISOString() }).eq('id', id);
+  showToast('✅ Request Approved!', 'success');
+  closePanel();
+  loadRequests();
+}
+
+async function rejectRequest(id) {
+  await db.from('requests').update({ status:'Rejected', updated_at: new Date().toISOString() }).eq('id', id);
+  showToast('❌ Request Rejected', 'warning');
+  closePanel();
+  loadRequests();
+}
+  
+// ── Format Details ──
+function formatDetails(r) {
+  if (!r.details) return '—';
+  try {
+    const d = typeof r.details === 'string' ? JSON.parse(r.details) : r.details;
+if (r.type === 'Time Off')         return `${d.request_type||''} · ${d.from_date||''} → ${d.to_date||''}`;
+if (r.type === 'Excuse')           return `${d.excuse_type||''} · ${d.date||''}`;
+if (r.type === 'Missing Punch')    return `Date: ${d.date||''}`;
+if (r.type === 'Shift Swap')       return `${d.date||''} · with ${d.colleague||''}`;
+if (r.type === 'Break Change')     return `${d.break_type||''} → ${d.requested_time||''}`;
+if (r.type === 'Schedule Request') return `Week: ${d.week_start||''}`;
+    
+    return '—';
+  } catch { return '—'; }
+}
+
+// ── Filter Chips ──
+function setTypeFilter(type, el) {
+  filterType = type;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+// ── Helpers ──
+function formatDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) + ' ' +
+         dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+
+function openPanel()  { document.getElementById('panel-overlay').classList.add('open'); document.getElementById('slide-panel').classList.add('open'); }
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); document.getElementById('slide-panel').classList.remove('open'); }
+
+loadRequests();
+</script>
+</body>
+</html>

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin Portal — Presentation</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gold: #D4AF37;
+  --gold2: #F4D03F;
+  --dark: #0a0e1a;
+  --dark2: #111827;
+  --dark3: #1f2937;
+  --border: rgba(212, 175, 55, 0.2);
+  --text: #e2e8f0;
+  --muted: #9ca3af;
+  --green: #10b981;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --purple: #8b5cf6;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Cairo', sans-serif;
+  background: var(--dark);
+  color: var(--text);
+  overflow: hidden; /* For slide mode */
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- LAYOUT --- */
+.slide-container {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform: scale(0.95) translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.slide.active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  z-index: 2;
+  pointer-events: all;
+}
+
+.content-wrapper {
+  max-width: 1000px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* --- TYPOGRAPHY --- */
+h1 { font-size: 3.5rem; font-weight: 900; color: var(--gold); line-height: 1.2; margin-bottom: 1rem; }
+h2 { font-size: 2.2rem; font-weight: 700; color: var(--text); margin-bottom: 2rem; border-right: 5px solid var(--gold); padding-right: 20px; }
+h3 { font-size: 1.5rem; font-weight: 700; color: var(--gold); margin-bottom: 1rem; }
+p { font-size: 1.2rem; color: var(--muted); line-height: 1.7; margin-bottom: 1.5rem; }
+
+.highlight { color: var(--gold); font-weight: bold; }
+code { font-family: 'IBM Plex Mono', monospace; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; color: var(--gold2); }
+
+/* --- COMPONENTS --- */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+.card {
+  background: var(--dark2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 25px;
+  transition: transform 0.3s;
+}
+.card:hover { transform: translateY(-5px); border-color: var(--gold); }
+
+.card-icon { font-size: 2.5rem; margin-bottom: 15px; display: block; }
+.card-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; color: #fff; }
+.card-desc { font-size: 0.95rem; color: var(--muted); }
+
+.badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.badge-role { background: rgba(239, 68, 68, 0.2); color: var(--red); border: 1px solid var(--red); }
+.badge-sec { background: rgba(212, 175, 55, 0.2); color: var(--gold); border: 1px solid var(--gold); }
+
+.flow-box {
+  background: var(--dark3);
+  border: 1px solid var(--border);
+  padding: 10px 20px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.flow-box::before { content: '➜'; color: var(--gold); }
+
+/* --- NAVIGATION --- */
+.controls {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 15px;
+  z-index: 100;
+  background: rgba(10, 14, 26, 0.8);
+  backdrop-filter: blur(10px);
+  padding: 10px 20px;
+  border-radius: 50px;
+  border: 1px solid var(--border);
+}
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+  font-size: 1.2rem;
+}
+.btn:hover { background: var(--gold); color: var(--dark); border-color: var(--gold); }
+
+.progress-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 15px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.dot.active { background: var(--gold); width: 20px; border-radius: 10px; }
+
+.slide-number {
+  position: absolute;
+  top: 30px;
+  left: 30px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--border);
+}
+
+/* --- RESPONSIVE --- */
+@media (max-width: 768px) {
+  h1 { font-size: 2.5rem; }
+  h2 { font-size: 1.8rem; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .slide { padding: 20px; overflow-y: auto; display: block; } /* Allow scroll on mobile */
+  .content-wrapper { padding-bottom: 80px; }
+}
+</style>
+</head>
+<body>
+
+<div class="slide-container">
+
+  <!-- Slide 1: Title -->
+  <div class="slide active">
+    <div class="content-wrapper" style="text-align: center;">
+      <div style="font-size: 4rem; margin-bottom: 20px;">👑</div>
+      <h1>NOS Admin Portal</h1>
+      <h2>مركز التحكم والإدارة — توثيق تقني</h2>
+      <p>الواجهة الإدارية الكاملة لإدارة الموظفين، الجداول،<br>الأداء، وطلبات الفريق.</p>
+      <div style="margin-top: 40px; color: var(--gold); font-family: 'IBM Plex Mono';">
+        admin-portal2-main — Management System
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 2: Stack & Architecture -->
+  <div class="slide">
+    <div class="slide-number">01 / 07</div>
+    <div class="content-wrapper">
+      <h2>البنية التحتية والتقنية</h2>
+      <div class="grid-2">
+        <div class="card">
+          <span class="card-icon">🌐</span>
+          <div class="card-title">النشر والاستضافة</div>
+          <div class="card-desc">
+            منفصل عن بوابة الموظفين.<br>
+            Repo: <code>admin-portal2-main</code><br>
+            يستخدم <b>Cloudflare Pages</b> للنشر التلقائي.<br>
+            URL: <code>/admin-portal2/</code>
+          </div>
+        </div>
+        <div class="card">
+          <span class="card-icon">🔑</span>
+          <div class="card-title">Service Role Key</div>
+          <div class="card-desc">
+            يستخدم مفتاح <code>service_role</code> للاتصال بقاعدة البيانات.<br>
+            هذا المفتاح يمتلك <b>صلاحيات كاملة</b> ويجتاز نظام الحماية (RLS).<br>
+            يجب حفظ هذا المفتاح بأمان تام.
+          </div>
+        </div>
+        <div class="card">
+          <span class="card-icon">📁</span>
+          <div class="card-title">هيكلية الكود</div>
+          <div class="card-desc">
+            صفحات منفصلة لكل وظيفة (Single Page Logic).<br>
+            ملفات JS مشتركة للمصادقة (<code>auth.js</code>) والواجهة (<code>ui.js</code>).<br>
+            دعم للوضع الليلي والنهاري (Theme Toggle).
+          </div>
+        </div>
+        <div class="card">
+          <span class="card-icon">🔐</span>
+          <div class="card-title">المصادقة (Auth)</div>
+          <div class="card-desc">
+            نظام تسجيل دخول مخصص وليس Supabase Auth.<br>
+            التحقق يتم عبر جدول <code>admins</code> في قاعدة البيانات.<br>
+            الجلسة يتم حفظها في <code>sessionStorage</code>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: Security -->
+  <div class="slide">
+    <div class="slide-number">02 / 07</div>
+    <div class="content-wrapper">
+      <h2>الأمان والصلاحيات</h2>
+      <p>من المهم فهم الفرق الكبير بين صلاحيات الأدمن والموظف.</p>
+      
+      <div class="grid-2" style="margin-top: 30px;">
+        <div style="border: 1px solid var(--red); background: rgba(239,68,68,0.05); padding: 20px; border-radius: 12px;">
+          <h3 style="color: var(--red);">⚠️ تحذير أمني</h3>
+          <p style="font-size: 1rem; margin-bottom: 10px;">مفتاح <code>service_role</code> يمنح القدرة على قراءة وكتابة أي بيانات في Supabase.</p>
+          <ul style="padding-right: 20px; color: var(--muted); font-size: 0.9rem;">
+            <li>يجب ألا يكون موجوداً في كود الموظفين.</li>
+            <li>مستودع GitHub يجب أن يكون <b>Private</b>.</li>
+          </ul>
+        </div>
+
+        <div style="border: 1px solid var(--gold); background: rgba(212,175,55,0.05); padding: 20px; border-radius: 12px;">
+          <h3 style="color: var(--gold);">🛡️ جدول الإداريين</h3>
+          <p style="font-size: 1rem; margin-bottom: 10px;">الدخول يتم عبر <code>admins</code> table.</p>
+          <ul style="padding-right: 20px; color: var(--muted); font-size: 0.9rem;">
+            <li>البيانات المخزنة: <code>username, password_hash, role</code>.</li>
+            <li>لإضافة أدمن جديد: إضافة صف مباشرة في Supabase.</li>
+            <li>تغيير كلمة المرور: تعديل عمود <code>password_hash</code> في Supabase مباشرة.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px; background: var(--dark2); padding: 15px; border-radius: 8px; font-size: 0.9rem;">
+        <span style="color: var(--blue); font-weight: bold;">ملحوظة:</span> الـ Admin Portal يستخدم نظام مصادقة منفصل (Custom)، بينما الـ Agent Portal يستخدم Supabase Auth.
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Core Pages (Schedule) -->
+  <div class="slide">
+    <div class="slide-number">03 / 07</div>
+    <div class="content-wrapper">
+      <h2>إدارة الجدول (Schedule & Breaks)</h2>
+      <p>الصفحة الأهم في النظام، حيث يتم تحديد عمل الموظفين.</p>
+
+      <div style="background: var(--dark3); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 15px;">تدفق نشر الجدول (Publish Flow)</h3>
+        <div class="flow-box">
+          <span>بناء الجدول (Create Week)</span>
+          <span>→</span>
+          <span class="highlight">نشر الجدول (Publish)</span>
+        </div>
+        <div class="flow-box">
+          <span>توليد البريكات تلقائياً (Auto-generate Breaks)</span>
+        </div>
+        <div class="flow-box">
+          <span>تحديث الإجازات السنوية (Auto-update Annual Leave)</span>
+        </div>
+        <div class="flow-box" style="border-color: var(--green);">
+          <span style="color: var(--green);">ظهور الجدول فوراً للموظفين</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">⏰ Breaks Page</div>
+          <div class="card-desc">
+            تعديل أوقات البريكات يدوياً.<br>
+            عرض "Queue Timeline" للتأكد من تغطية الخط.<br>
+            ميزة نسخ أوقات الأمس (Copy from Yesterday).
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔄 Requests</div>
+          <div class="card-desc">
+            الموافقة أو الرفض على طلبات الموظفين (إجازات، تبديل وردية).<br>
+            الموافقة هنا فقط تغير الحالة، التعديل الفعلي يتم يدوياً.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Data & Quality -->
+  <div class="slide">
+    <div class="slide-number">04 / 07</div>
+    <div class="content-wrapper">
+      <h2>استيراد البيانات والجودة</h2>
+      <div class="grid-2">
+        <div>
+          <h3>📥 استيراد xCally</h3>
+          <p>طريقة تحديث مؤشرات الأداء (KPIs) شهرياً.</p>
+          <div style="background: var(--dark2); padding: 15px; border-radius: 8px; font-size: 0.9rem;">
+            <ol style="margin-right: 20px; color: var(--muted);">
+              <li>تصدير ملف CSV من نظام xCally.</li>
+              <li>رفع الملف في صفحة <code>xcally-import.html</code>.</li>
+              <li>النظام يطابق الأسماء عبر حقل <code>xcally_name</code>.</li>
+              <li>يحفظ في جدول <code>daily_performance</code>.</li>
+            </ol>
+          </div>
+          <div style="margin-top: 10px; font-size: 0.85rem; color: var(--gold);">
+            ⚠️ مهم: يجب أن يتطابق اسم الموظف في الجدول تماماً مع الاسم في CSV.
+          </div>
+        </div>
+        <div>
+          <h3>⭐ تقييم الجودة (Quality)</h3>
+          <p>تسجيل تقييمات المكالمات وحساب النسبة المئوية.</p>
+          <div style="background: var(--dark2); padding: 15px; border-radius: 8px; font-size: 0.9rem;">
+            <ul style="list-style: none;">
+              <li style="margin-bottom: 8px;">✅ إضافة مراجعات (Reviews) لكل موظف.</li>
+              <li style="margin-bottom: 8px;">✅ النظام يحسب المتوسط التلقائي للشهر.</li>
+              <li style="margin-bottom: 8px;">✅ النسبة النهائية تظهر في <code>quality_scores</code>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Maintenance -->
+  <div class="slide">
+    <div class="slide-number">05 / 07</div>
+    <div class="content-wrapper">
+      <h2>دليل الصيانة والتحديث</h2>
+      <p>الخطوات الروتينية للحفاظ على سير العمل.</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-title">🔄 تحديث النظام</div>
+          <div class="card-desc">
+            تعديل الملف محلياً → رفعه على GitHub (admin-portal2-main) → النشر التلقائي خلال دقيقتين.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">➕ إضافة موظف جديد</div>
+          <div class="card-desc">
+            1. الإضافة من صفحة Agents.<br>
+            2. إنشاء مستخدم Supabase Auth يدوياً.<br>
+            3. إضافته في جدول الشهر الجاري.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔑 إعادة تعيين كلمة مرور الأدمن</div>
+          <div class="card-desc">
+            الذهاب إلى Supabase Dashboard → جدول <code>admins</code> → تعديل عمود <code>password_hash</code> (كلمة مرور نصية).
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 7: Conclusion -->
+  <div class="slide">
+    <div class="slide-number">06 / 07</div>
+    <div class="content-wrapper" style="text-align: center;">
+      <h2>الخلاصة</h2>
+      
+      <div style="margin: 40px 0; text-align: right; display: inline-block; width: 100%; max-width: 800px;">
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-title">🛡️ الأمان مسؤولية مشتركة</div>
+          <div class="card-desc">الحفاظ على سرية مفتاح <code>service_role</code> وجعل الـ Repository خاصاً هو الأساس.</div>
+        </div>
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-title">📊 البيانات هي القلب</div>
+          <div class="card-desc">استيراد xCally بدقة، ونشر الجدول في الوقت المناسب يضمن رؤية صحيحة للموظفين.</div>
+        </div>
+        <div class="card">
+          <div class="card-title">🚀 نظام متكامل</div>
+          <div class="card-desc">من جدول الأدمن، إلى جيب الموظف، تدفق بيانات سلس ومحمي.</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px;">
+        <p style="margin-bottom: 0;">شكراً لاستماعكم / متابعتكم</p>
+        <div style="color: var(--gold); font-weight: bold; font-size: 1.5rem; margin-top: 10px;">
+          NOS IT Team
+        </div>
+        <div style="font-size: 0.9rem; color: var(--muted); font-family: 'IBM Plex Mono'; margin-top: 5px;">
+          April 2026 — Admin Portal
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation Controls -->
+<div class="controls">
+  <button class="btn" onclick="prevSlide()">❯</button>
+  <div class="progress-dots" id="dots">
+    <!-- Dots injected by JS -->
+  </div>
+  <button class="btn" onclick="nextSlide()">❮</button>
+</div>
+
+<script>
+  let currentSlide = 0;
+  const slides = document.querySelectorAll('.slide');
+  const dotsContainer = document.getElementById('dots');
+  const totalSlides = slides.length;
+
+  // Initialize Dots
+  slides.forEach((_, index) => {
+    const dot = document.createElement('div');
+    dot.classList.add('dot');
+    if (index === 0) dot.classList.add('active');
+    dot.addEventListener('click', () => goToSlide(index));
+    dotsContainer.appendChild(dot);
+  });
+
+  function updateSlides() {
+    slides.forEach((slide, index) => {
+      slide.classList.remove('active');
+      if (index === currentSlide) slide.classList.add('active');
+    });
+
+    // Update Dots
+    const dots = document.querySelectorAll('.dot');
+    dots.forEach((dot, index) => {
+      dot.classList.remove('active');
+      if (index === currentSlide) dot.classList.add('active');
+    });
+  }
+
+  function nextSlide() {
+    currentSlide = (currentSlide + 1) % totalSlides;
+    updateSlides();
+  }
+
+  function prevSlide() {
+    currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+    updateSlides();
+  }
+
+  function goToSlide(index) {
+    currentSlide = index;
+    updateSlides();
+  }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    // In RTL, visually Left is 'Next' if we think of a physical stack, 
+    // but usually arrow keys map to physical direction. 
+    // Let's map ArrowLeft (Physical) to Prev Slide, ArrowRight to Next Slide
+    // regardless of RTL to be intuitive with mouse clicking.
+    if (e.key === 'ArrowRight') nextSlide();
+    if (e.key === 'ArrowLeft') prevSlide();
+  });
+</script>
+
+</body>
+</html>

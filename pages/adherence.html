@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Adherence</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.dev-type-late    { color:#F59E0B; font-weight:700; }
+.dev-type-early   { color:#EF4444; font-weight:700; }
+.dev-type-long    { color:#8B5CF6; font-weight:700; }
+.dev-type-missed  { color:#DC2626; font-weight:700; }
+.dev-type-extra   { color:#3B82F6; font-weight:700; }
+.dev-type-outage  { color:#F97316; font-weight:700; }
+.dev-type-system  { color:#06B6D4; font-weight:700; }
+
+.waived-row { opacity:0.55; }
+.waived-row td { text-decoration:line-through; text-decoration-color:var(--muted); }
+.waived-row td:last-child { text-decoration:none; }
+
+.top-offender-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-bottom:1px solid var(--border);
+}
+.top-offender-row:last-child { border-bottom:none; }
+.top-offender-left { display:flex; align-items:center; gap:10px; }
+
+.min-pill {
+  display:inline-block; padding:3px 9px; border-radius:20px;
+  font-size:11px; font-weight:800; font-family:'IBM Plex Mono',monospace;
+  background:rgba(239,68,68,0.12); color:#EF4444; border:1px solid rgba(239,68,68,0.2);
+}
+.min-pill.small { background:rgba(245,158,11,0.12); color:#F59E0B; border-color:rgba(245,158,11,0.2); }
+
+/* ── MONTHLY ADHERENCE ── */
+.adh-table { width:100%; border-collapse:collapse; font-size:11px; }
+.adh-table th {
+  padding:7px 8px; background:var(--surface2); color:var(--muted);
+  font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.8px;
+  border-bottom:1px solid var(--border); border-right:1px solid var(--border);
+  text-align:center; white-space:nowrap;
+}
+.adh-table th.left { text-align:left; }
+.adh-table td {
+  padding:5px 7px; border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border); text-align:center; vertical-align:middle;
+}
+.adh-table td.left { text-align:left; }
+.adh-table tr.date-group td {
+  background:var(--surface2); font-weight:700; font-size:11px;
+  color:var(--gold); padding:6px 10px; letter-spacing:.5px;
+}
+.adh-chip {
+  display:inline-flex; align-items:center; gap:3px;
+  padding:2px 7px; border-radius:20px; font-size:10px; font-weight:700;
+  font-family:'IBM Plex Mono',monospace; white-space:nowrap;
+}
+.adh-ok   { background:rgba(16,185,129,.12); color:#10B981; border:1px solid rgba(16,185,129,.2); }
+.adh-late { background:rgba(239,68,68,.12);  color:#EF4444; border:1px solid rgba(239,68,68,.2); }
+.adh-early{ background:rgba(59,130,246,.12); color:#3B82F6; border:1px solid rgba(59,130,246,.2); }
+.adh-none { background:var(--surface2);      color:var(--muted); border:1px solid var(--border); }
+.adh-day-ok   { background:rgba(16,185,129,.08); }
+.adh-day-bad  { background:rgba(239,68,68,.06); }
+.adh-day-part { background:rgba(245,158,11,.06); }
+.tol-input { width:64px; padding:5px 8px; text-align:center; font-family:monospace; font-size:13px; }
+.summary-bar { height:8px; border-radius:4px; background:var(--surface2); overflow:hidden; margin-top:3px; }
+.summary-bar-fill { height:100%; border-radius:4px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <!-- ── TOP BAR ── -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Adherence</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Schedule Deviations & Compliance
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">
+          <i class="fas fa-plus"></i> Add Deviation
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshCurrentTab()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── TABS ── -->
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchAdhTab('deviations',this)">📋 Deviations Log</button>
+        <button class="tab-btn" onclick="switchAdhTab('monthly',this)">📅 Monthly Adherence</button>
+      </div>
+
+      <!-- ══════════ TAB: DEVIATIONS ══════════ -->
+      <div id="tab-deviations">
+
+      <!-- ── FILTERS ── -->
+      <div class="section-card fade-up" style="margin-bottom:14px;">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-filter" style="color:var(--gold)"></i> Filters
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="resetFilters()">
+              <i class="fas fa-undo"></i> Reset
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="runAutoCheck()" id="auto-check-btn">
+              <i class="fas fa-robot"></i> Run Auto-Check
+            </button>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="form-grid form-grid-3">
+            <div class="form-group">
+              <label class="form-label">Date Range</label>
+              <select id="filter-range" class="form-input" onchange="onRangeChange()">
+                <option value="mtd" selected>Month to Date</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="last7">Last 7 Days</option>
+                <option value="last30">Last 30 Days</option>
+                <option value="custom">Custom Range</option>
+              </select>
+            </div>
+            <div class="form-group" id="custom-from-wrap" style="display:none;">
+              <label class="form-label">From</label>
+              <input type="date" id="filter-from" class="form-input" onchange="loadData()">
+            </div>
+            <div class="form-group" id="custom-to-wrap" style="display:none;">
+              <label class="form-label">To</label>
+              <input type="date" id="filter-to" class="form-input" onchange="loadData()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Agent</label>
+              <select id="filter-agent" class="form-input" onchange="loadData()">
+                <option value="">All Agents</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Deviation Type</label>
+              <select id="filter-type" class="form-input" onchange="loadData()">
+                <option value="">All Types</option>
+                <option value="Late Login">Late Login</option>
+                <option value="Early Logout">Early Logout</option>
+                <option value="Long Break">Long Break</option>
+                <option value="Missed Shift">Missed Shift</option>
+                <option value="Extra Break">Extra Break</option>
+                <option value="Outage">Outage</option>
+                <option value="System Issue">System Issue</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select id="filter-status" class="form-input" onchange="loadData()">
+                <option value="active" selected>Active Only</option>
+                <option value="">All</option>
+                <option value="waived">Waived Only</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Time Adjust</label>
+              <select id="time-adjust" class="form-input" onchange="loadData()">
+                <option value="0">No Adjust</option>
+                <option value="1">+1 Hour</option>
+                <option value="-1">−1 Hour</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── KPI CARDS ── -->
+      <div class="kpi-grid fade-up">
+        <div class="kpi-card gold">
+          <span class="kpi-icon">📊</span>
+          <div class="kpi-label">Avg Adherence</div>
+          <div class="kpi-value" id="kpi-adherence">—</div>
+          <div class="kpi-sub">Net after waives</div>
+        </div>
+        <div class="kpi-card red">
+          <span class="kpi-icon">⚠️</span>
+          <div class="kpi-label">Total Deviations</div>
+          <div class="kpi-value" id="kpi-total">—</div>
+          <div class="kpi-sub" id="kpi-total-sub">In selected range</div>
+        </div>
+        <div class="kpi-card green">
+          <span class="kpi-icon">✅</span>
+          <div class="kpi-label">Waived</div>
+          <div class="kpi-value" id="kpi-waived">—</div>
+          <div class="kpi-sub" id="kpi-waived-sub">Forgiven deviations</div>
+        </div>
+        <div class="kpi-card orange">
+          <span class="kpi-icon">⏱️</span>
+          <div class="kpi-label">Total Lost Time</div>
+          <div class="kpi-value" id="kpi-lost">—</div>
+          <div class="kpi-sub">Net minutes (after waives)</div>
+        </div>
+        <div class="kpi-card purple">
+          <span class="kpi-icon">🔥</span>
+          <div class="kpi-label">Most Common</div>
+          <div class="kpi-value" id="kpi-common" style="font-size:16px;">—</div>
+          <div class="kpi-sub" id="kpi-common-sub"></div>
+        </div>
+        <div class="kpi-card blue">
+          <span class="kpi-icon">👥</span>
+          <div class="kpi-label">Agents Affected</div>
+          <div class="kpi-value" id="kpi-agents">—</div>
+          <div class="kpi-sub">Unique agents</div>
+        </div>
+      </div>
+
+      <!-- ── MAIN ROW: Table + Top Offenders ── -->
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:18px;">
+
+        <!-- DEVIATIONS TABLE -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-list" style="color:var(--gold)"></i>
+              Deviations Log
+            </div>
+            <span id="row-count" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Agent</th>
+                    <th>Type</th>
+                    <th>Scheduled</th>
+                    <th>Actual</th>
+                    <th>Deviation</th>
+                    <th>Status</th>
+                    <th style="text-align:center;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dev-tbody">
+                  <tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TOP OFFENDERS -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-exclamation-triangle" style="color:var(--gold)"></i>
+              Top Offenders
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div id="top-offenders">
+              <div class="loading-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BREAK CHANGES REPORT -->
+        <div class="section-card fade-up" style="grid-column:1/-1;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-coffee" style="color:var(--gold)"></i>
+              Break Changes Report
+              <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-right:8px;">— Committed vs Actual (xCALLY)</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="date" id="bc-from" class="form-input" style="width:140px;font-size:13px;">
+              <input type="date" id="bc-to"   class="form-input" style="width:140px;font-size:13px;">
+              <select id="bc-agent" class="form-input" style="width:160px;font-size:13px;">
+                <option value="">All Agents</option>
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="loadBreakChanges()">
+                <i class="fas fa-search"></i> Load
+              </button>
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div id="bc-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px;border-bottom:1px solid var(--border);"></div>
+            <div id="bc-table-wrap" style="overflow-x:auto;">
+              <div class="empty-state" style="padding:32px;">
+                <span class="empty-icon">☕</span>
+                Select date range and click Load
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      </div><!-- /tab-deviations -->
+
+      <!-- ══════════ TAB: MONTHLY ADHERENCE ══════════ -->
+      <div id="tab-monthly" style="display:none;">
+
+        <!-- Tolerance Settings -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-sliders-h" style="color:var(--gold)"></i> Tolerance Settings
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="saveTolerance()">
+              <i class="fas fa-save"></i> Save
+            </button>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">⏰ Login Tolerance (minutes)</label>
+                <input type="number" id="tol-login" class="form-input tol-input" min="0" max="30" value="4">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                  Default: 4 min — agent is "On Time" if logged in within ±<span id="tol-login-preview">4</span> min of shift start
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">☕ Break Tolerance (minutes)</label>
+                <input type="number" id="tol-break" class="form-input tol-input" min="0" max="30" value="2">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                  Default: 2 min — break is "On Time" if taken within ±<span id="tol-break-preview">2</span> min of scheduled
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monthly Filters -->
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-filter" style="color:var(--gold)"></i> Monthly Filter
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="loadMonthlyAdherence()">
+              <i class="fas fa-search"></i> Load
+            </button>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Month</label>
+                <input type="month" id="month-picker" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agent (optional)</label>
+                <select id="month-agent" class="form-input">
+                  <option value="">All Agents</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monthly KPI Summary -->
+        <div id="monthly-kpis" style="display:none;" class="fade-up">
+          <div class="kpi-grid" style="margin-bottom:18px;">
+            <div class="kpi-card green">
+              <span class="kpi-icon">✅</span>
+              <div class="kpi-label">Adherent Days</div>
+              <div class="kpi-value" id="mkpi-adherent">—</div>
+              <div class="kpi-sub">All checks passed</div>
+            </div>
+            <div class="kpi-card red">
+              <span class="kpi-icon">❌</span>
+              <div class="kpi-label">Non-Adherent Days</div>
+              <div class="kpi-value" id="mkpi-nonadherent">—</div>
+              <div class="kpi-sub">At least 1 violation</div>
+            </div>
+            <div class="kpi-card gold">
+              <span class="kpi-icon">📊</span>
+              <div class="kpi-label">Adherence Rate</div>
+              <div class="kpi-value" id="mkpi-rate">—</div>
+              <div class="kpi-sub">Days with data only</div>
+            </div>
+            <div class="kpi-card orange">
+              <span class="kpi-icon">⏰</span>
+              <div class="kpi-label">Late Logins</div>
+              <div class="kpi-value" id="mkpi-latelogin">—</div>
+              <div class="kpi-sub">Over login tolerance</div>
+            </div>
+            <div class="kpi-card purple">
+              <span class="kpi-icon">☕</span>
+              <div class="kpi-label">Late Breaks</div>
+              <div class="kpi-value" id="mkpi-latebreak">—</div>
+              <div class="kpi-sub">Over break tolerance</div>
+            </div>
+            <div class="kpi-card blue">
+              <span class="kpi-icon">👥</span>
+              <div class="kpi-label">Agents Tracked</div>
+              <div class="kpi-value" id="mkpi-agents">—</div>
+              <div class="kpi-sub">This month</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Daily Grid -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-calendar-check" style="color:var(--gold)"></i>
+              Daily Adherence Log
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span id="monthly-row-count" style="font-size:11px;color:var(--muted);"></span>
+              <button class="btn btn-ghost btn-sm" id="monthly-export-btn" onclick="exportMonthlyExcel()" style="display:none;">
+                <i class="fas fa-file-excel" style="color:#10B981;"></i> Export Excel
+              </button>
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap" style="overflow-x:auto;">
+              <div id="monthly-grid">
+                <div class="empty-state" style="padding:40px;">
+                  <span class="empty-icon">📅</span>
+                  Select a month and click Load
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-Agent Monthly Summary -->
+        <div class="section-card fade-up" id="agent-summary-card" style="display:none;margin-top:18px;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-users" style="color:var(--gold)"></i>
+              Agent Monthly Summary
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table" id="agent-summary-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Days Worked</th>
+                    <th>Adherent</th>
+                    <th>Non-Adherent</th>
+                    <th>No Data</th>
+                    <th>Late Logins</th>
+                    <th>Late Breaks</th>
+                    <th>Adherence %</th>
+                  </tr>
+                </thead>
+                <tbody id="agent-summary-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tab-monthly -->
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ WAIVE MODAL ═══════════ -->
+<div class="modal-overlay" id="waive-modal">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title"><i class="fas fa-hand-holding-heart" style="color:var(--success);margin-right:6px;"></i> Waive Deviation</div>
+      <button class="modal-close" onclick="closeWaiveModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="waive-preview" style="margin-bottom:8px;"></div>
+    <div class="form-group" style="margin-top:16px;">
+      <label class="form-label">Reason <span class="req">*</span></label>
+      <textarea id="waive-reason" class="form-input" rows="3" placeholder="Reason for waiving (e.g. traffic, medical, approved by manager...)"></textarea>
+    </div>
+    <div class="modal-btns" style="margin-top:18px;">
+      <button class="btn btn-ghost" onclick="closeWaiveModal()">Cancel</button>
+      <button class="btn btn-success" onclick="confirmWaive()">
+        <i class="fas fa-check"></i> Confirm Waive
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ADD DEVIATION MODAL ═══════════ -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-header">
+      <div class="modal-title"><i class="fas fa-plus-circle" style="color:var(--gold);margin-right:6px;"></i> Add Deviation</div>
+      <button class="modal-close" onclick="closeAddModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="form-grid form-grid-2">
+      <div class="form-group form-full">
+        <label class="form-label">Agent <span class="req">*</span></label>
+        <select id="add-agent" class="form-input">
+          <option value="">Select agent...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date <span class="req">*</span></label>
+        <input type="date" id="add-date" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type <span class="req">*</span></label>
+        <select id="add-type" class="form-input" onchange="onAddTypeChange()">
+          <option value="Late Login">Late Login</option>
+          <option value="Early Logout">Early Logout</option>
+          <option value="Long Break">Long Break</option>
+          <option value="Missed Shift">Missed Shift</option>
+          <option value="Extra Break">Extra Break</option>
+          <option value="Outage">Outage</option>
+          <option value="System Issue">System Issue</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="add-sched-label">Scheduled Time</label>
+        <input type="text" id="add-scheduled" class="form-input" placeholder="09:00">
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="add-actual-label">Actual Time</label>
+        <input type="text" id="add-actual" class="form-input" placeholder="09:15">
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Deviation (minutes) <span class="req">*</span></label>
+        <input type="number" id="add-minutes" class="form-input" placeholder="15" min="0">
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="add-notes" class="form-input" rows="2" placeholder="Any additional context..."></textarea>
+      </div>
+    </div>
+    <div class="modal-btns" style="margin-top:18px;">
+      <button class="btn btn-ghost" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeviation()">
+        <i class="fas fa-save"></i> Save Deviation
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ DELETE CONFIRM MODAL ═══════════ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/adherence-deviations.js"></script>
+<script src="../js/adherence-breaks.js"></script>
+<script src="../js/adherence-monthly.js"></script>
+</body>
+</html>

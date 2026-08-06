@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Excuses</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Excuses</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Manage Excuse Requests</div>
+      </div>
+      <div class="topbar-right">
+        <select id="month-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <select id="year-filter" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadAll()">
+          <option value="2026">2026</option><option value="2025">2025</option>
+        </select>
+        <button class="btn btn-primary" onclick="openAddPanel()">
+          <i class="fas fa-plus"></i> Add Excuse
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="loadAll()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up" style="grid-template-columns:repeat(4,1fr);">
+        <div class="kpi-card gold">
+          <span class="kpi-icon">📋</span>
+          <div class="kpi-label">Total Requests</div>
+          <div class="kpi-value" id="k-total">—</div>
+        </div>
+        <div class="kpi-card orange">
+          <span class="kpi-icon">⏳</span>
+          <div class="kpi-label">Pending</div>
+          <div class="kpi-value" id="k-pending">—</div>
+        </div>
+        <div class="kpi-card green">
+          <span class="kpi-icon">✅</span>
+          <div class="kpi-label">Approved</div>
+          <div class="kpi-value" id="k-approved">—</div>
+        </div>
+        <div class="kpi-card red">
+          <span class="kpi-icon">❌</span>
+          <div class="kpi-label">Rejected</div>
+          <div class="kpi-value" id="k-rejected">—</div>
+        </div>
+      </div>
+
+      <!-- BALANCE TABLE -->
+      <div class="section-card fade-up" style="margin-bottom:16px;">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-balance-scale" style="color:var(--gold)"></i> Monthly Balance</div>
+          <span id="balance-period" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Max Allowed</th>
+                  <th>Used (Approved)</th>
+                  <th>Remaining</th>
+                  <th>Excuse 1</th>
+                  <th>Excuse 2</th>
+                </tr>
+              </thead>
+              <tbody id="balance-tbody">
+                <tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXCUSES TABLE -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title"><i class="fas fa-list" style="color:var(--gold)"></i> All Excuse Requests</div>
+          <div style="display:flex;gap:8px;">
+            <select class="form-input" style="width:auto;padding:8px 12px;" onchange="filterByStatus(this.value)">
+              <option value="">All Status</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Type</th>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Status</th>
+                  <th>Reject Reason</th>
+                  <th>Submitted</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="excuses-tbody">
+                <tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Add Excuse</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon(); 
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+const now = new Date();
+document.getElementById('month-filter').value = String(now.getMonth()+1).padStart(2,'0');
+
+const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+const MAX_EXCUSES = 2; // limit maximum in month
+
+let allAgents   = [];
+let allExcuses  = [];
+let allSchedule = [];
+let statusFilter = '';
+
+async function init() {
+  const { data } = await db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name');
+  allAgents = data||[];
+  await loadAll();
+}
+
+async function loadAll() {
+  const month = document.getElementById('month-filter').value;
+  const year  = parseInt(document.getElementById('year-filter').value);
+  const dateFrom = year+'-'+month+'-01';
+  const lastDay  = new Date(year, parseInt(month), 0).getDate();
+  const dateTo   = year+'-'+month+'-'+String(lastDay).padStart(2,'0');
+  document.getElementById('balance-period').innerText = MONTH_NAMES[parseInt(month)]+' '+year;
+  statusFilter = '';
+  const statusSelect = document.querySelector('select[onchange="filterByStatus(this.value)"]');
+  if (statusSelect) statusSelect.value = '';
+  
+  try {
+    const { data } = await db.from('excuses').select('*')
+      .gte('excuse_date', dateFrom).lte('excuse_date', dateTo)
+      .order('created_at', {ascending:false});
+    allExcuses = data||[];
+    updateKPIs();
+    renderBalance();
+    renderExcuses();
+  } catch(e) {
+    showToast('Failed: '+e.message, 'error');
+  }
+}
+
+function updateKPIs() {
+  document.getElementById('k-total').innerText    = allExcuses.length;
+  document.getElementById('k-pending').innerText  = allExcuses.filter(e=>e.status==='Pending').length;
+  document.getElementById('k-approved').innerText = allExcuses.filter(e=>e.status==='Approved').length;
+  document.getElementById('k-rejected').innerText = allExcuses.filter(e=>e.status==='Rejected').length;
+}
+
+function renderBalance() {
+  const tbody = document.getElementById('balance-tbody');
+  tbody.innerHTML = allAgents.map(agent => {
+    const agentExcuses = allExcuses.filter(e => e.agent_id===agent.id && e.status==='Approved');
+    const used      = agentExcuses.length;
+    const remaining = MAX_EXCUSES - used;
+    const exc1 = agentExcuses[0];
+    const exc2 = agentExcuses[1];
+
+    return '<tr>'+
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">'+initials(agent.formal_name)+'</div><span style="font-weight:700;">'+agent.formal_name+'</span></div></td>'+
+      '<td style="text-align:center;font-weight:700;">'+MAX_EXCUSES+'</td>'+
+      '<td style="text-align:center;"><span class="badge '+(used>=MAX_EXCUSES?'badge-danger':used>0?'badge-warning':'badge-muted')+'">'+used+'</span></td>'+
+      '<td style="text-align:center;"><span class="badge '+(remaining<=0?'badge-danger':remaining===1?'badge-warning':'badge-success')+'">'+Math.max(0,remaining)+'</span></td>'+
+      '<td style="font-size:11px;color:var(--muted);">'+(exc1?'<span class="badge badge-info">'+exc1.excuse_type+'</span> '+formatDate(exc1.excuse_date):'—')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);">'+(exc2?'<span class="badge badge-info">'+exc2.excuse_type+'</span> '+formatDate(exc2.excuse_date):'—')+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+function filterByStatus(val) {
+  statusFilter = val;
+  renderExcuses();
+}
+
+function renderExcuses() {
+  const tbody = document.getElementById('excuses-tbody');
+  let data = allExcuses;
+  if (statusFilter) data = data.filter(e=>e.status===statusFilter);
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">📭</span>No excuses found</div></td></tr>';
+    return;
+  }
+
+  const typeColors = {'Arrive Late':'badge-warning','Leave Early':'badge-info'};
+
+  tbody.innerHTML = data.map(e => {
+    const isPending = e.status==='Pending';
+    return '<tr style="'+(isPending?'background:rgba(245,158,11,0.03)':'')+'">'+
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">'+initials(e.agent_name)+'</div><span style="font-weight:700;">'+e.agent_name+'</span></div></td>'+
+      '<td><span class="badge '+(typeColors[e.excuse_type]||'badge-muted')+'">'+e.excuse_type+'</span></td>'+
+      '<td style="font-weight:700;color:var(--gold);">'+formatDate(e.excuse_date)+'</td>'+
+      '<td style="font-size:12px;color:var(--muted);">'+(e.shift_time||'—')+'</td>'+
+      '<td>'+statusBadge(e.status)+'</td>'+
+      '<td style="font-size:11px;color:var(--danger);">'+(e.reject_reason||'—')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);">'+formatDateTime(e.created_at)+'</td>'+
+      '<td><div style="display:flex;gap:6px;">'+
+        (isPending?
+          '<button class="btn btn-success btn-sm btn-icon" onclick="approveExcuse(\''+e.id+'\',\''+e.agent_id+'\',\''+e.excuse_date+'\')" title="Approve"><i class="fas fa-check"></i></button>'+
+          '<button class="btn btn-danger btn-sm btn-icon" onclick="openRejectPanel(\''+e.id+'\')" title="Reject"><i class="fas fa-times"></i></button>'
+          :
+          '<button class="btn btn-ghost btn-sm btn-icon" onclick="resetExcuse(\''+e.id+'\')" title="Reset"><i class="fas fa-undo"></i></button>'
+        )+
+        '<button class="btn btn-danger btn-sm btn-icon" onclick="deleteExcuse(\''+e.id+'\')" title="Delete"><i class="fas fa-trash"></i></button>'+
+      '</div></td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ── APPROVE ──
+async function approveExcuse(id, agentId, date) {
+  // Check balance first
+  const agentApproved = allExcuses.filter(e=>e.agent_id===agentId&&e.status==='Approved').length;
+  if (agentApproved >= MAX_EXCUSES) {
+    showToast('Agent already used maximum excuses this month!', 'error');
+    return;
+  }
+
+  // Check shift from schedule
+const { data: sched, error: schedError } = await db.from('schedule')
+  .select('day_type, shift_types(name,start_time,end_time)')
+  .eq('agent_id', agentId).eq('shift_date', date)
+  .maybeSingle(); // ✅ instead of single — throws error if no result
+
+if (schedError) {
+  showToast('Failed to check schedule: ' + schedError.message, 'error');
+  return;
+}
+
+if (!sched) {
+  showToast('Cannot approve — agent has no schedule on this day!', 'error');
+  return;
+}
+
+const dayType = sched.day_type;
+if (['Off','Annual','Sick','Casual','PH'].includes(dayType)) {
+  showToast('Cannot approve — agent is ' + dayType + ' on this day!', 'error');
+  return;
+}
+  
+  try {
+    await db.from('excuses').update({
+      status:'Approved', updated_at:new Date().toISOString()
+    }).eq('id', id);
+
+    // ── Auto-waive matching deviation ──────────────────────────────
+    const excuseRec = allExcuses.find(e => e.id === id);
+    if (excuseRec) {
+      const devType = excuseRec.excuse_type === 'Arrive Late' ? 'Late Login' : 'Early Logout';
+      const { error: waiveErr } = await db.from('adherence_deviations')
+        .update({
+          is_waived:    true,
+          waived_by:    session?.username || 'Admin',
+          waived_at:    new Date().toISOString(),
+          waive_reason: `Auto-waived: Excuse approved (${excuseRec.excuse_type})`,
+        })
+        .eq('agent_id',       excuseRec.agent_id)
+        .eq('deviation_date', excuseRec.excuse_date)
+        .eq('deviation_type', devType)
+        .eq('is_waived',      false);
+      if (waiveErr) console.warn('Auto-waive warning:', waiveErr.message);
+      else showToast('Excuse approved + deviation auto-waived ✅', 'success');
+    } else {
+      showToast('Excuse approved!', 'success');
+    }
+    // ───────────────────────────────────────────────────────────────
+
+    loadAll();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+// ── REJECT ──
+function openRejectPanel(id) {
+  document.getElementById('panel-title').innerText = 'Reject Excuse';
+  document.getElementById('panel-body').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Reject Reason <span class="req">*</span></label>
+      <textarea id="reject-reason" class="form-input" rows="4"
+        placeholder="e.g. Balance is 0 / You are the only one on this shift..."></textarea>
+    </div>
+  `;
+  document.getElementById('panel-footer').innerHTML =
+    '<button class="btn btn-ghost" onclick="closePanel()">Cancel</button>'+
+    '<button class="btn btn-danger" onclick="confirmReject(\''+id+'\')"><i class="fas fa-times"></i> Reject</button>';
+  openPanel();
+}
+
+async function confirmReject(id) {
+  const reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) { showToast('Please enter reject reason', 'error'); return; }
+  try {
+    await db.from('excuses').update({
+      status:'Rejected', reject_reason:reason, updated_at:new Date().toISOString()
+    }).eq('id', id);
+    showToast('Excuse rejected', 'warning');
+    closePanel();
+    loadAll();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+async function resetExcuse(id) {
+  try {
+    await db.from('excuses').update({
+      status:'Pending', reject_reason:null, updated_at:new Date().toISOString()
+    }).eq('id', id);
+    showToast('Reset to Pending', 'info');
+    loadAll();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+async function deleteExcuse(id) {
+  openModal('Delete Excuse','Delete this excuse request?', async () => {
+    await db.from('excuses').delete().eq('id', id);
+    showToast('Deleted!', 'warning');
+    loadAll();
+  });
+}
+
+// ── ADD EXCUSE (Admin manual add) ──
+function openAddPanel() {
+  document.getElementById('panel-title').innerText = 'Add Excuse';
+  document.getElementById('panel-body').innerHTML = `
+    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--muted);">
+      <i class="fas fa-info-circle" style="color:var(--warning);margin-right:6px;"></i>
+      Max 2 excuses per agent per month. Each excuse = 2 hours deducted from Missing Time.
+    </div>
+    <div class="form-grid">
+      <div class="form-group form-full">
+        <label class="form-label">Agent <span class="req">*</span></label>
+        <select id="add-agent" class="form-input">
+          <option value="">Select Agent...</option>
+          ${allAgents.map(a=>'<option value="'+a.id+'" data-name="'+a.formal_name+'">'+a.formal_name+'</option>').join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Excuse Type <span class="req">*</span></label>
+        <select id="add-type" class="form-input">
+          <option value="Arrive Late">Arrive Late (+2 hrs)</option>
+          <option value="Leave Early">Leave Early (+2 hrs)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date <span class="req">*</span></label>
+        <input type="date" id="add-date" class="form-input">
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Note (Optional)</label>
+        <input type="text" id="add-note" class="form-input" placeholder="Optional note...">
+      </div>
+    </div>
+  `;
+  document.getElementById('panel-footer').innerHTML =
+    '<button class="btn btn-ghost" onclick="closePanel()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="addExcuse()"><i class="fas fa-plus"></i> Add & Approve</button>';
+  openPanel();
+}
+
+async function addExcuse() {
+  const agentId   = document.getElementById('add-agent').value;
+  const agentName = document.getElementById('add-agent').selectedOptions[0]?.dataset?.name||'';
+  const type      = document.getElementById('add-type').value;
+  const date      = document.getElementById('add-date').value;
+  const note      = document.getElementById('add-note').value.trim();
+
+  if (!agentId||!date) { showToast('Please fill Agent and Date','error'); return; }
+
+  // Check balance
+  const agentApproved = allExcuses.filter(e=>e.agent_id===agentId&&e.status==='Approved').length;
+  if (agentApproved >= MAX_EXCUSES) {
+    showToast('Agent already used maximum excuses this month!','error'); return;
+  }
+
+  // ✅ verify from the schedule
+  const { data: sched, error: schedError } = await db.from('schedule')
+    .select('day_type')
+    .eq('agent_id', agentId)
+    .eq('shift_date', date)
+    .maybeSingle();
+
+  if (schedError) {
+    showToast('Failed to check schedule: ' + schedError.message, 'error'); return;
+  }
+
+  if (!sched) {
+    showToast('Cannot add — agent has no schedule on this day!', 'error'); return;
+  }
+
+  if (['Off','Annual','Sick','Casual','PH'].includes(sched.day_type)) {
+    showToast('Cannot add — agent is ' + sched.day_type + ' on this day!', 'error'); return;
+  }
+
+  const month = MONTH_NAMES[parseInt(document.getElementById('month-filter').value)];
+  const year  = parseInt(document.getElementById('year-filter').value);
+
+  try {
+    await db.from('excuses').insert({
+      agent_id:   agentId,
+      agent_name: agentName,
+      excuse_date: date,
+      excuse_type: type,
+      status:      'Approved',
+      month_year:  month+' '+year,
+      created_at:  new Date().toISOString(),
+      updated_at:  new Date().toISOString(),
+    });
+
+    // ── Auto-waive matching deviation ──────────────────────────────
+    const devType = type === 'Arrive Late' ? 'Late Login' : 'Early Logout';
+    const { error: waiveErr } = await db.from('adherence_deviations')
+      .update({
+        is_waived:    true,
+        waived_by:    session?.username || 'Admin',
+        waived_at:    new Date().toISOString(),
+        waive_reason: `Auto-waived: Excuse approved (${type})`,
+      })
+      .eq('agent_id',       agentId)
+      .eq('deviation_date', date)
+      .eq('deviation_type', devType)
+      .eq('is_waived',      false);
+    if (waiveErr) console.warn('Auto-waive warning:', waiveErr.message);
+    // ───────────────────────────────────────────────────────────────
+
+    showToast('Excuse added, approved + deviation auto-waived ✅','success');
+    closePanel();
+    loadAll();
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+  
+// ── HELPERS ──
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+}
+function formatDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+function openModal(title,msg,onConfirm) {
+  document.getElementById('modal-title').innerText=title;
+  document.getElementById('modal-msg').innerText=msg;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick=()=>{closeModal();onConfirm();};
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function openPanel()  { document.getElementById('panel-overlay').classList.add('open'); document.getElementById('slide-panel').classList.add('open'); }
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); document.getElementById('slide-panel').classList.remove('open'); }
+
+init();
+</script>
+</body>
+</html>

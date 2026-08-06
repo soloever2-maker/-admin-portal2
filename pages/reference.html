@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Reference</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Reference</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> System Configuration</div>
+      </div>
+      <div class="topbar-right">
+          <button class="btn btn-ghost btn-sm" onclick="loadAll()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- TABS -->
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchTab('call-reasons',this)">📞 Call Reasons</button>
+        <button class="tab-btn" onclick="switchTab('shift-types',this)">⏰ Shift Types</button>
+      </div>
+
+      <!-- ── CALL REASONS TAB ── -->
+      <div id="tab-call-reasons">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+
+          <!-- Projects Leads -->
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title" style="color:#D4AF37;">
+                <i class="fas fa-building" style="color:var(--gold)"></i> Projects Leads
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="addReason('Projects Leads')">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <div class="section-body no-pad" id="list-projects"></div>
+          </div>
+
+          <!-- Business Related -->
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title">
+                <i class="fas fa-briefcase" style="color:#3B82F6;"></i> Business Related
+              </div>
+              <button class="btn btn-info btn-sm" onclick="addReason('Business Related')">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <div class="section-body no-pad" id="list-business"></div>
+          </div>
+
+          <!-- Others -->
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title">
+                <i class="fas fa-tags" style="color:var(--muted);"></i> Others
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="addReason('Others')">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <div class="section-body no-pad" id="list-others"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── SHIFT TYPES TAB ── -->
+      <div id="tab-shift-types" style="display:none;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-clock" style="color:var(--gold)"></i> Shift Types
+            </div>
+            <button class="btn btn-primary" onclick="openAddShift()">
+              <i class="fas fa-plus"></i> Add Shift
+            </button>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="shifts-tbody">
+                  <tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- PANEL -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Add</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-footer" id="panel-footer"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+let allReasons    = [];
+let allShiftTypes = [];
+
+// ── Tabs ──
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-call-reasons').style.display = tab === 'call-reasons' ? 'block' : 'none';
+  document.getElementById('tab-shift-types').style.display  = tab === 'shift-types'  ? 'block' : 'none';
+  if (tab === 'shift-types') loadShiftTypes();
+}
+
+// ── Load Call Reasons ──
+async function loadReasons() {
+  const { data } = await db.from('call_reasons').select('*').order('sort_order').order('name');
+  allReasons = data || [];
+  renderReasons();
+}
+
+function renderReasons() {
+  const cats = { 'Projects Leads': 'list-projects', 'Business Related': 'list-business', 'Others': 'list-others' };
+  const catColors = { 'Projects Leads': 'var(--gold)', 'Business Related': '#3B82F6', 'Others': 'var(--muted)' };
+
+  Object.entries(cats).forEach(([cat, elId]) => {
+    const el      = document.getElementById(elId);
+    const reasons = allReasons.filter(r => r.category === cat);
+
+    if (!reasons.length) {
+      el.innerHTML = `<div class="empty-state" style="padding:20px;"><span class="empty-icon" style="font-size:20px;">📭</span>No items</div>`;
+      return;
+    }
+
+    el.innerHTML = reasons.map(r => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
+        <i class="fas fa-grip-vertical" style="color:var(--border);font-size:11px;cursor:grab;"></i>
+        <span style="flex:1;font-size:13px;font-weight:600;color:${r.is_active?'var(--text)':'var(--muted)'};">
+          ${r.name}
+        </span>
+        <span class="badge ${r.is_active?'badge-success':'badge-muted'}" style="font-size:9px;">
+          ${r.is_active?'Active':'Off'}
+        </span>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="editReason('${r.id}')" title="Edit">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteReason('${r.id}','${r.name}')" title="Delete">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    `).join('');
+  });
+}
+
+// ── Add Reason ──
+function addReason(category) {
+  document.getElementById('panel-title').innerText = `Add — ${category}`;
+  document.getElementById('panel-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Reason Name <span class="req">*</span></label>
+        <input type="text" id="f-reason-name" class="form-input" placeholder="e.g. Jirian campaign">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select id="f-reason-cat" class="form-input">
+          <option value="Projects Leads" ${category==='Projects Leads'?'selected':''}>Projects Leads</option>
+          <option value="Business Related" ${category==='Business Related'?'selected':''}>Business Related</option>
+          <option value="Others" ${category==='Others'?'selected':''}>Others</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="f-reason-status" class="form-input">
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </select>
+      </div>
+    </div>
+  `;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveReason('')">
+      <i class="fas fa-save"></i> Save
+    </button>
+  `;
+  openPanel();
+}
+
+// ── Edit Reason ──
+function editReason(id) {
+  const r = allReasons.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('panel-title').innerText = 'Edit Reason';
+  document.getElementById('panel-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Reason Name <span class="req">*</span></label>
+        <input type="text" id="f-reason-name" class="form-input" value="${r.name}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select id="f-reason-cat" class="form-input">
+          <option value="Projects Leads" ${r.category==='Projects Leads'?'selected':''}>Projects Leads</option>
+          <option value="Business Related" ${r.category==='Business Related'?'selected':''}>Business Related</option>
+          <option value="Others" ${r.category==='Others'?'selected':''}>Others</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="f-reason-status" class="form-input">
+          <option value="true" ${r.is_active?'selected':''}>Active</option>
+          <option value="false" ${!r.is_active?'selected':''}>Inactive</option>
+        </select>
+      </div>
+    </div>
+  `;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveReason('${id}')">
+      <i class="fas fa-save"></i> Update
+    </button>
+  `;
+  openPanel();
+}
+
+async function saveReason(id) {
+  const name     = document.getElementById('f-reason-name').value.trim();
+  const category = document.getElementById('f-reason-cat').value;
+  const isActive = document.getElementById('f-reason-status').value === 'true';
+  if (!name) { showToast('Name is required', 'error'); return; }
+
+  try {
+    if (id) {
+      await db.from('call_reasons').update({ name, category, is_active: isActive }).eq('id', id);
+    } else {
+      await db.from('call_reasons').insert({ name, category, is_active: isActive, sort_order: 99 });
+    }
+    showToast(id ? 'Reason updated!' : 'Reason added!', 'success');
+    closePanel();
+    loadReasons();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+function deleteReason(id, name) {
+  openModal('Delete Reason', `Delete "${name}"?`, async () => {
+    await db.from('call_reasons').delete().eq('id', id);
+    showToast('Deleted!', 'warning');
+    loadReasons();
+  });
+}
+
+// ── Shift Types ──
+async function loadShiftTypes() {
+  const tbody = document.getElementById('shifts-tbody');
+  tbody.innerHTML = `<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>`;
+  const { data } = await db.from('shift_types').select('*').order('start_time');
+  allShiftTypes = data || [];
+
+  if (!allShiftTypes.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">⏰</span>No shift types</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = allShiftTypes.map(st => {
+    const dur = calcDuration(st.start_time, st.end_time);
+    return `
+      <tr>
+        <td style="font-weight:700;">${st.name}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${st.start_time?.substring(0,5)||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${st.end_time?.substring(0,5)||'—'}</td>
+        <td><span class="badge badge-info">${dur}</span></td>
+        <td>${statusBadge(st.is_active?'Active':'Inactive')}</td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-info btn-sm btn-icon" onclick="editShift('${st.id}')"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteShift('${st.id}','${st.name}')"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openAddShift() { openShiftPanel('', null); }
+function editShift(id) {
+  const st = allShiftTypes.find(s => s.id === id);
+  openShiftPanel(id, st);
+}
+
+function openShiftPanel(id, st) {
+  document.getElementById('panel-title').innerText = id ? 'Edit Shift Type' : 'Add Shift Type';
+  document.getElementById('panel-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Name <span class="req">*</span></label>
+        <input type="text" id="f-st-name" class="form-input" value="${st?.name||''}" placeholder="e.g. Morning">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Start Time <span class="req">*</span></label>
+        <input type="time" id="f-st-start" class="form-input" value="${st?.start_time?.substring(0,5)||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">End Time <span class="req">*</span></label>
+        <input type="time" id="f-st-end" class="form-input" value="${st?.end_time?.substring(0,5)||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="f-st-status" class="form-input">
+          <option value="true" ${st?.is_active!==false?'selected':''}>Active</option>
+          <option value="false" ${st?.is_active===false?'selected':''}>Inactive</option>
+        </select>
+      </div>
+    </div>
+  `;
+  document.getElementById('panel-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveShift('${id}')">
+      <i class="fas fa-save"></i> ${id?'Update':'Add'}
+    </button>
+  `;
+  openPanel();
+}
+
+async function saveShift(id) {
+  const name     = document.getElementById('f-st-name').value.trim();
+  const start    = document.getElementById('f-st-start').value;
+  const end      = document.getElementById('f-st-end').value;
+  const isActive = document.getElementById('f-st-status').value === 'true';
+  if (!name||!start||!end) { showToast('All fields required', 'error'); return; }
+
+  try {
+    if (id) {
+      await db.from('shift_types').update({ name, start_time:start, end_time:end, is_active:isActive }).eq('id', id);
+    } else {
+      await db.from('shift_types').insert({ name, start_time:start, end_time:end, is_active:isActive });
+    }
+    showToast(id?'Updated!':'Added!', 'success');
+    closePanel();
+    loadShiftTypes();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+function deleteShift(id, name) {
+  openModal('Delete Shift Type', `Delete "${name}"? This will affect existing schedules.`, async () => {
+    await db.from('shift_types').delete().eq('id', id);
+    showToast('Deleted!', 'warning');
+    loadShiftTypes();
+  });
+}
+
+function calcDuration(start, end) {
+  if (!start || !end) return '—';
+  const [sh,sm] = start.split(':').map(Number);
+  const [eh,em] = end.split(':').map(Number);
+  const mins = (eh*60+em) - (sh*60+sm);
+  return `${Math.floor(mins/60)}h ${mins%60>0?mins%60+'m':''}`.trim();
+}
+
+function openModal(title, msg, onConfirm) {
+  document.getElementById('modal-title').innerText = title;
+  document.getElementById('modal-msg').innerText   = msg;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick = () => { closeModal(); onConfirm(); };
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function openPanel()  { document.getElementById('panel-overlay').classList.add('open'); document.getElementById('slide-panel').classList.add('open'); }
+function closePanel() { document.getElementById('panel-overlay').classList.remove('open'); document.getElementById('slide-panel').classList.remove('open'); }
+
+loadReasons();
+</script>
+</body>
+</html>

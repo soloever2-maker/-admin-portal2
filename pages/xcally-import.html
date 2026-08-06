@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — xCALLY Import</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: 16px; padding: 40px 24px;
+  text-align: center; cursor: pointer;
+  transition: all 0.3s; background: var(--surface2);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--gold);
+  background: rgba(212,175,55,0.05);
+}
+.drop-zone i { font-size: 36px; color: var(--gold); margin-bottom: 10px; display: block; }
+.drop-zone h3 { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.drop-zone p  { font-size: 12px; color: var(--muted); }
+.step-bar { display:flex; align-items:center; gap:0; margin-bottom:24px; }
+.step { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:var(--muted); }
+.step-num {
+  width:26px; height:26px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800;
+  background:var(--surface2); border:2px solid var(--border); color:var(--muted);
+}
+.step.active .step-num { background:var(--gold-grad); border-color:var(--gold); color:#000; }
+.step.active { color:var(--text); }
+.step.done .step-num { background:rgba(16,185,129,0.15); border-color:#10B981; color:#10B981; }
+.step.done { color:#10B981; }
+.step-line { flex:1; height:2px; background:var(--border); margin:0 8px; }
+.step-line.done { background:#10B981; }
+.conf-high { color:#10B981; font-weight:800; }
+.conf-mid  { color:#F59E0B; font-weight:800; }
+.conf-low  { color:#EF4444; font-weight:800; }
+.day-tab {
+  padding:6px 12px; border-radius:8px; cursor:pointer;
+  border:1.5px solid var(--border); background:var(--surface2);
+  color:var(--muted); font-size:11px; font-weight:700;
+  transition:all 0.2s; white-space:nowrap;
+}
+.day-tab:hover  { border-color:var(--border2); color:var(--text); }
+.day-tab.active { border-color:var(--gold); color:var(--gold); background:rgba(212,175,55,0.08); }
+.view-tab {
+  flex:1; padding:8px; border:none; border-radius:9px;
+  background:transparent; color:var(--muted);
+  font-size:12px; font-weight:700; cursor:pointer;
+  font-family:'Plus Jakarta Sans',sans-serif; transition:all 0.2s;
+}
+.view-tab.active { background:var(--gold-grad); color:#000; }
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">xCALLY Import</div>
+        <div class="breadcrumb"><i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i> Daily Performance Tracker</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="reapplyExcuses()"><i class="fas fa-sync-alt"></i> Re-apply Excuses</button>
+        <button class="btn btn-ghost" onclick="switchView('aux')"><i class="fas fa-stopwatch"></i> Aux Report</button>
+        <button class="btn btn-ghost" onclick="switchView('history')"><i class="fas fa-history"></i> View History</button>
+        <button class="btn btn-primary" onclick="switchView('import')"><i class="fas fa-upload"></i> Import Data</button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- IMPORT VIEW -->
+      <div id="view-import">
+        <div class="step-bar fade-up">
+          <div class="step active" id="step-1"><div class="step-num" id="sn-1">1</div><span>Upload</span></div>
+          <div class="step-line" id="sl-1"></div>
+          <div class="step" id="step-2"><div class="step-num" id="sn-2">2</div><span>Review by Day</span></div>
+          <div class="step-line" id="sl-2"></div>
+          <div class="step" id="step-3"><div class="step-num" id="sn-3">3</div><span>Save</span></div>
+        </div>
+
+        <!-- Upload Panel -->
+        <div id="panel-upload">
+          <div class="section-card fade-up" style="margin-bottom:14px;">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-cog" style="color:var(--gold)"></i> Settings</div>
+            </div>
+            <div class="section-body">
+              <div class="form-grid form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">Target Mode</label>
+                  <select id="target-mode" class="form-input" onchange="toggleTargetMode()">
+                    <option value="fixed">Fixed Target (all days)</option>
+                    <option value="range">Custom per Date Range</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Time Adjust (+1 hour)</label>
+                  <select id="time-adjust" class="form-input">
+                    <option value="off">OFF — Use as is</option>
+                    <option value="on">ON — Add 1 hour</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Fixed Target -->
+              <div id="target-fixed">
+                <div class="form-group">
+                  <label class="form-label">Daily Target Hours</label>
+                  <input type="number" id="target-hours" class="form-input" value="8" min="1" max="12">
+                </div>
+              </div>
+
+              <!-- Custom Range -->
+              <div id="target-range" style="display:none;">
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;">
+                  <i class="fas fa-info-circle" style="color:var(--gold);margin-right:6px;"></i>
+                  Add multiple date ranges with different target hours
+                </div>
+                <div id="range-list"></div>
+                <button class="btn btn-ghost btn-sm" onclick="addRange()" style="margin-top:8px;">
+                  <i class="fas fa-plus"></i> Add Range
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-upload" style="color:var(--gold)"></i> Upload xCALLY Report</div>
+            </div>
+            <div class="section-body">
+              <div class="drop-zone" id="drop-zone"
+                onclick="document.getElementById('csv-input').click()"
+                ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                <i class="fas fa-file-csv"></i>
+                <h3>Drop CSV file here or click to browse</h3>
+                <p>Or paste data from Google Sheets below</p>
+                <input type="file" id="csv-input" accept=".csv,.txt" style="display:none;" onchange="handleFile(this.files[0])">
+              </div>
+              <div style="text-align:center;margin:14px 0;color:var(--muted);font-size:12px;">— OR paste from Google Sheets (Ctrl+A then Ctrl+C) —</div>
+              <div class="form-group">
+                <textarea id="csv-paste" class="form-input" rows="8" placeholder="Paste xCALLY Aux Report here..."></textarea>
+              </div>
+              <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+                <button class="btn btn-ghost" onclick="clearUpload()"><i class="fas fa-times"></i> Clear</button>
+                <button class="btn btn-primary" onclick="processData()" id="process-btn">
+                  <i class="fas fa-magic"></i> Process Data
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Review Panel -->
+        <div id="panel-review" style="display:none;">
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-calendar-day" style="color:var(--gold)"></i> Results by Day</div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="goBackToUpload()"><i class="fas fa-arrow-left"></i> Back</button>
+                <button class="btn btn-primary" onclick="saveAll()" id="save-btn"><i class="fas fa-save"></i> Save All Days</button>
+              </div>
+            </div>
+            <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;" id="import-summary"></div>
+            <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;" id="day-tabs"></div>
+            <div class="section-body no-pad">
+              <div class="table-wrap">
+                <table class="nos-table">
+                  <thead>
+                    <tr>
+                      <th>Agent</th><th>Active Time</th><th>Target</th>
+                      <th>Conformance</th><th>Missing</th><th>Calls</th><th>Avg AHT</th>
+                    </tr>
+                  </thead>
+                  <tbody id="review-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY VIEW -->
+      <div id="view-history" style="display:none;">
+        <div class="section-card fade-up" style="margin-bottom:14px;">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-filter" style="color:var(--gold)"></i> Filter</div>
+          </div>
+          <div class="section-body">
+            <div class="form-grid form-grid-3">
+              <div class="form-group">
+                <label class="form-label">View Mode</label>
+                <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;">
+                  <button class="view-tab active" onclick="setViewMode('day',this)">Day</button>
+                  <button class="view-tab" onclick="setViewMode('week',this)">Week</button>
+                  <button class="view-tab" onclick="setViewMode('month',this)">Month</button>
+                  <button class="view-tab" onclick="setViewMode('range',this)">Range</button>
+                </div>
+              </div>
+              <div class="form-group" id="filter-single">
+                <label class="form-label">Date</label>
+                <input type="date" id="filter-date" class="form-input" onchange="loadHistory()">
+              </div>
+              <div class="form-group" id="filter-month-wrap" style="display:none;">
+                <label class="form-label">Month / Year</label>
+                <div style="display:flex;gap:6px;">
+                  <select id="filter-month" class="form-input" onchange="loadHistory()">
+                    <option value="01">Jan</option><option value="02">Feb</option>
+                    <option value="03">Mar</option><option value="04">Apr</option>
+                    <option value="05">May</option><option value="06">Jun</option>
+                    <option value="07">Jul</option><option value="08">Aug</option>
+                    <option value="09">Sep</option><option value="10">Oct</option>
+                    <option value="11">Nov</option><option value="12">Dec</option>
+                  </select>
+                  <select id="filter-year" class="form-input" style="width:90px;" onchange="loadHistory()">
+                    <option value="2026">2026</option><option value="2025">2025</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" id="filter-range-wrap" style="display:none;">
+                <label class="form-label">Date Range</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="date" id="filter-from" class="form-input" onchange="loadHistory()">
+                  <input type="date" id="filter-to"   class="form-input" onchange="loadHistory()">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agent</label>
+                <select id="filter-agent" class="form-input" onchange="loadHistory()">
+                  <option value="">All Agents</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-grid fade-up" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px;">
+          <div class="kpi-card gold"><span class="kpi-icon">📊</span><div class="kpi-label">Avg Conformance</div><div class="kpi-value" id="h-conf">—</div></div>
+          <div class="kpi-card blue"><span class="kpi-icon">📞</span><div class="kpi-label">Total Calls</div><div class="kpi-value" id="h-calls">—</div></div>
+          <div class="kpi-card green"><span class="kpi-icon">⏱️</span><div class="kpi-label">Avg AHT</div><div class="kpi-value" id="h-aht">—</div></div>
+          <div class="kpi-card red"><span class="kpi-icon">⚠️</span><div class="kpi-label">Below 98%</div><div class="kpi-value" id="h-below">—</div></div>
+          <div class="kpi-card purple"><span class="kpi-icon">📅</span><div class="kpi-label">Days Loaded</div><div class="kpi-value" id="h-days">—</div></div>
+        </div>
+
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title"><i class="fas fa-table" style="color:var(--gold)"></i> Performance Data</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="history-label" style="font-size:11px;color:var(--muted);"></span>
+              <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;">
+                <button class="view-tab active" id="ht-detailed" onclick="setHistoryTab('detailed',this)">Detailed</button>
+                <button class="view-tab" id="ht-summary" onclick="setHistoryTab('summary',this)">Summary</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="table-detailed" class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Agent</th><th>Active Time</th>
+                    <th>Conformance</th><th>Missing</th><th>Calls</th><th>Avg AHT</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="history-tbody">
+                  <tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="table-summary" class="section-body no-pad" style="display:none;">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Days Active</th>
+                    <th>Avg Conformance</th>
+                    <th>Net Missing</th>
+                    <th>Total Calls</th>
+                    <th>Avg AHT</th>
+                    <th>Below 98%</th>
+                  </tr>
+                </thead>
+                <tbody id="summary-tbody">
+                  <tr><td colspan="7"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUX REPORT VIEW -->
+      <div id="view-aux" style="display:none;">
+
+        <!-- Source tabs -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button class="view-tab active" id="aux-src-csv" onclick="setAuxSource('csv',this)"
+            style="flex:0 0 auto;padding:9px 22px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            <i class="fas fa-file-csv" style="margin-right:6px;"></i>From CSV (Live Parse)
+          </button>
+          <button class="view-tab" id="aux-src-db" onclick="setAuxSource('db',this)"
+            style="flex:0 0 auto;padding:9px 22px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            <i class="fas fa-database" style="margin-right:6px;"></i>From Saved DB
+          </button>
+          <div id="aux-save-wrap" style="margin-left:auto;display:none;">
+            <button class="btn btn-primary btn-sm" onclick="saveAuxToDB()">
+              <i class="fas fa-save"></i> Save to DB
+            </button>
+          </div>
+        </div>
+
+        <!-- ══ CSV SOURCE ══ -->
+        <div id="aux-panel-csv">
+          <div class="section-card fade-up" style="margin-bottom:14px;">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-upload" style="color:var(--gold)"></i> Upload or Paste xCALLY CSV</div>
+            </div>
+            <div class="section-body">
+              <div class="drop-zone" id="aux-drop-zone"
+                onclick="document.getElementById('aux-csv-input').click()"
+                ondrop="auxHandleDrop(event)" ondragover="auxHandleDragOver(event)" ondragleave="auxHandleDragLeave(event)">
+                <i class="fas fa-file-csv"></i>
+                <h3>Drop CSV file here or click to browse</h3>
+                <p>Or paste directly below</p>
+                <input type="file" id="aux-csv-input" accept=".csv,.txt" style="display:none;" onchange="auxHandleFile(this.files[0])">
+              </div>
+              <div style="text-align:center;margin:12px 0;color:var(--muted);font-size:12px;">— OR —</div>
+              <div class="form-group">
+                <textarea id="aux-csv-paste" class="form-input" rows="6" placeholder="Paste xCALLY Aux Report data here..."></textarea>
+              </div>
+              <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px;">
+                <button class="btn btn-ghost" onclick="document.getElementById('aux-csv-paste').value='';auxResetResults()"><i class="fas fa-times"></i> Clear</button>
+                <button class="btn btn-primary" onclick="parseAuxCSV()" id="aux-parse-btn">
+                  <i class="fas fa-magic"></i> Parse Aux Data
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results from CSV -->
+          <div id="aux-csv-results" style="display:none;">
+            <!-- KPI bar -->
+            <div class="kpi-grid fade-up" id="aux-kpi-bar-csv" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:14px;"></div>
+            <!-- Summary by agent -->
+            <div class="section-card fade-up">
+              <div class="section-header">
+                <div class="section-title"><i class="fas fa-stopwatch" style="color:var(--gold)"></i> Aux Time per Agent</div>
+                <span id="aux-csv-label" style="font-size:11px;color:var(--muted);"></span>
+              </div>
+              <div class="section-body no-pad" style="overflow-x:auto;">
+                <table class="nos-table"><thead><tr id="aux-csv-thead"></tr></thead><tbody id="aux-csv-tbody"></tbody></table>
+              </div>
+            </div>
+            <!-- Daily detail -->
+            <div class="section-card fade-up" style="margin-top:14px;">
+              <div class="section-header">
+                <div class="section-title"><i class="fas fa-calendar-alt" style="color:var(--gold)"></i> Daily Detail</div>
+              </div>
+              <div class="section-body no-pad" style="overflow-x:auto;">
+                <table class="nos-table"><thead><tr id="aux-csv-daily-thead"></tr></thead><tbody id="aux-csv-daily-tbody"></tbody></table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ DB SOURCE ══ -->
+        <div id="aux-panel-db" style="display:none;">
+          <div class="section-card fade-up" style="margin-bottom:14px;">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-filter" style="color:var(--gold)"></i> Filter</div>
+            </div>
+            <div class="section-body">
+              <div class="form-grid form-grid-3">
+                <div class="form-group">
+                  <label class="form-label">View Mode</label>
+                  <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;">
+                    <button class="view-tab active" onclick="setAuxMode('day',this)">Day</button>
+                    <button class="view-tab" onclick="setAuxMode('range',this)">Range</button>
+                  </div>
+                </div>
+                <div class="form-group" id="aux-filter-single">
+                  <label class="form-label">Date</label>
+                  <input type="date" id="aux-filter-date" class="form-input" onchange="loadAuxReport()">
+                </div>
+                <div class="form-group" id="aux-filter-range-wrap" style="display:none;">
+                  <label class="form-label">Date Range</label>
+                  <div style="display:flex;gap:6px;">
+                    <input type="date" id="aux-from" class="form-input" onchange="loadAuxReport()">
+                    <input type="date" id="aux-to"   class="form-input" onchange="loadAuxReport()">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Agent</label>
+                  <select id="aux-filter-agent" class="form-input" onchange="loadAuxReport()">
+                    <option value="">All Agents</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="kpi-grid fade-up" id="aux-kpi-bar" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:14px;"></div>
+          <div class="section-card fade-up">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-stopwatch" style="color:var(--gold)"></i> Aux Time per Agent</div>
+              <span id="aux-label" style="font-size:11px;color:var(--muted);"></span>
+            </div>
+            <div class="section-body no-pad" style="overflow-x:auto;">
+              <table class="nos-table"><thead><tr id="aux-thead-row"></tr></thead><tbody id="aux-tbody"></tbody></table>
+            </div>
+          </div>
+          <div id="aux-daily-section" class="section-card fade-up" style="display:none;margin-top:14px;">
+            <div class="section-header">
+              <div class="section-title"><i class="fas fa-calendar-alt" style="color:var(--gold)"></i> Daily Detail</div>
+            </div>
+            <div class="section-body no-pad" style="overflow-x:auto;">
+              <table class="nos-table"><thead><tr id="aux-daily-thead"></tr></thead><tbody id="aux-daily-tbody"></tbody></table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/audit.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username||'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username||'Admin');
+}
+
+let allAgents     = [];
+let processedDays = {};
+let selectedDay   = null;
+let viewModeVal   = 'day';
+const TODAY       = getToday();
+
+async function init() {
+  const { data } = await db.from('agents').select('id,formal_name,xcally_name').eq('status','Active').order('formal_name');
+  allAgents = data || [];
+  // History agent filter
+  const sel = document.getElementById('filter-agent');
+  allAgents.forEach(a => sel.add(new Option(a.formal_name, a.formal_name)));
+  // Aux agent filter
+  const auxSel = document.getElementById('aux-filter-agent');
+  allAgents.forEach(a => auxSel.add(new Option(a.formal_name, a.formal_name)));
+  document.getElementById('filter-date').value  = TODAY;
+  document.getElementById('aux-filter-date').value = TODAY;
+  document.getElementById('filter-month').value = String(new Date().getMonth()+1).padStart(2,'0');
+}
+
+// ── TARGET MODE ──
+function toggleTargetMode() {
+  const mode = document.getElementById('target-mode').value;
+  document.getElementById('target-fixed').style.display = mode==='fixed' ? 'block' : 'none';
+  document.getElementById('target-range').style.display = mode==='range' ? 'block' : 'none';
+  if (mode==='range' && !document.querySelectorAll('.range-row').length) addRange();
+}
+
+function addRange() {
+  const div = document.createElement('div');
+  div.className = 'range-row';
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 80px 32px;gap:8px;align-items:end;margin-bottom:8px;';
+  div.innerHTML = `
+    <div class="form-group" style="margin:0;">
+      <label class="form-label">From</label>
+      <input type="date" class="form-input range-from">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label class="form-label">To</label>
+      <input type="date" class="form-input range-to">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label class="form-label">Hours</label>
+      <input type="number" class="form-input range-hours" value="8" min="1" max="12">
+    </div>
+    <button class="btn btn-danger btn-sm btn-icon" onclick="this.closest('.range-row').remove()">
+      <i class="fas fa-times"></i>
+    </button>`;
+  document.getElementById('range-list').appendChild(div);
+}
+
+function getTargetForDate(date) {
+  const mode = document.getElementById('target-mode').value;
+  if (mode === 'fixed') {
+    return (parseFloat(document.getElementById('target-hours').value)||8) * 3600;
+  }
+  const rows = document.querySelectorAll('.range-row');
+  for (const row of rows) {
+    const from  = row.querySelector('.range-from').value;
+    const to    = row.querySelector('.range-to').value;
+    const hours = parseFloat(row.querySelector('.range-hours').value)||8;
+    if (from && to && date >= from && date <= to) return hours * 3600;
+  }
+  return 8 * 3600;
+}
+
+function switchView(view) {
+  document.getElementById('view-import').style.display  = view==='import'  ? 'block' : 'none';
+  document.getElementById('view-history').style.display = view==='history' ? 'block' : 'none';
+  document.getElementById('view-aux').style.display     = view==='aux'     ? 'block' : 'none';
+  if (view==='history') loadHistory();
+  if (view==='aux')     loadAuxReport();
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+}
+function handleDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function handleDragLeave() { document.getElementById('drop-zone').classList.remove('drag-over'); }
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('csv-paste').value = e.target.result;
+    document.getElementById('drop-zone').innerHTML = `<i class="fas fa-check-circle" style="color:#10B981;"></i><h3 style="color:#10B981;">✅ ${file.name}</h3><p>${(file.size/1024).toFixed(1)} KB loaded</p>`;
+    showToast('File loaded!', 'success');
+  };
+  reader.readAsText(file);
+}
+
+function clearUpload() {
+  document.getElementById('csv-paste').value = '';
+}
+
+function processData() {
+  const raw = document.getElementById('csv-paste').value.trim();
+  if (!raw) { showToast('Please paste or upload data first', 'error'); return; }
+
+  const btn = document.getElementById('process-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+  try {
+    const lines = raw.split('\n').filter(l => l.trim());
+    const isTab = lines.length > 1 && lines[1].includes('\t');
+
+    let startIdx = 0;
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const lower = lines[i].toLowerCase();
+      if (lower.includes('agent') || lower.includes('enterat') || lower.includes('duration')) {
+        startIdx = i + 1; break;
+      }
+    }
+
+    const byDay = {};
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols = splitLine(lines[i], isTab);
+      if (cols.length < 5) continue;
+
+      const agentName = cols[0]?.trim();
+      const enterAt   = cols[1]?.trim();
+      const exitAt    = cols[2]?.trim();
+      const evtEvent  = cols[3]?.trim().toUpperCase();
+      const eventType = cols[5]?.trim().toLowerCase();
+      const duration  = cols[4]?.trim();
+      const dateRaw   = cols[8]?.trim() || cols[1]?.trim() || '';
+
+      if (!agentName || agentName.toLowerCase() === 'agent') continue;
+
+      const date = extractDate(dateRaw);
+      if (!date) continue;
+
+      const enterSec = extractTimeSec(enterAt);
+      const exitSec  = extractTimeSec(exitAt);
+      if (enterSec < 0 || exitSec < 0) continue;
+
+      if (!byDay[date]) byDay[date] = {};
+      if (!byDay[date][agentName]) byDay[date][agentName] = {
+        sessions: [], talkSec: 0, calls: 0, callsList: [], auxes: {},
+        loginSec: null, break1Sec: null, lunchSec: null, break2Sec: null,
+      };
+
+      if (exitSec > enterSec) byDay[date][agentName].sessions.push([enterSec, exitSec]);
+
+      // ── Capture actual break & login times from specific event types ──
+      const d = byDay[date][agentName];
+      if (evtEvent === 'LOGIN' && eventType === 'universalbar') {
+        if (d.loginSec === null || enterSec < d.loginSec) d.loginSec = enterSec;
+      }
+      if (evtEvent === 'PAUSE' && eventType === 'break 1'  && d.break1Sec === null) d.break1Sec = enterSec;
+      if (evtEvent === 'PAUSE' && eventType === 'lunch'    && d.lunchSec  === null) d.lunchSec  = enterSec;
+      if (evtEvent === 'PAUSE' && eventType === 'break 2'  && d.break2Sec === null) d.break2Sec = enterSec;
+
+      // ── Capture non-break AUX durations ──
+      const BREAK_TYPES = ['break 1','lunch','break 2','inbound','universalbar','login','logout',''];
+      if (evtEvent === 'PAUSE' && !BREAK_TYPES.includes(eventType)) {
+        const auxSec = timeToSec(duration);
+        if (auxSec > 0) {
+          const auxKey = eventType.trim().toUpperCase();
+          d.auxes[auxKey] = (d.auxes[auxKey] || 0) + auxSec;
+        }
+      }
+
+      if (eventType === 'inbound' || eventType === 'outbound') {
+        const sec = timeToSec(duration);
+        // In many xCALLY reports, column 6 or 7 might contain the phone number/caller ID
+        // We'll try to look for a phone-like string in the columns
+        let mobile = null;
+        for (let j = 6; j < Math.min(cols.length, 15); j++) {
+          const val = cols[j]?.trim();
+          if (val && /^\+?\d{7,15}$/.test(val)) {
+            mobile = val;
+            break;
+          }
+        }
+        
+        byDay[date][agentName].callsList.push({
+          time: enterAt,
+          duration: sec,
+          customer: null,
+          mobile: mobile,
+          source: eventType
+        });
+        byDay[date][agentName].calls++;
+        byDay[date][agentName].talkSec += sec;
+      }
+    }
+
+    Object.keys(byDay).forEach(date => {
+      Object.keys(byDay[date]).forEach(agent => {
+        const d = byDay[date][agent];
+        if (!d.sessions.length) { d.activeSec = 0; return; }
+        d.sessions.sort((a,b) => a[0]-b[0]);
+        d.firstLoginSec  = d.sessions[0][0];
+        const merged = [d.sessions[0].slice()];
+        for (let j = 1; j < d.sessions.length; j++) {
+          const last = merged[merged.length-1];
+          const curr = d.sessions[j];
+          if (curr[0] <= last[1]) { last[1] = Math.max(last[1], curr[1]); }
+          else { merged.push(curr.slice()); }
+        }
+        d.activeSec      = merged.reduce((sum, interval) => sum + (interval[1]-interval[0]), 0);
+        d.lastLogoutSec  = merged[merged.length-1][1];
+      });
+    });
+
+    if (!Object.keys(byDay).length) {
+      showToast('No data found — check format', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-magic"></i> Process Data';
+      return;
+    }
+
+    processedDays = byDay;
+    renderReview();
+    setStep(2);
+    showToast('Processed ' + Object.keys(byDay).length + ' day(s)!', 'success');
+
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-magic"></i> Process Data';
+  }
+}
+
+function renderReview() {
+  const dates = Object.keys(processedDays).sort();
+  selectedDay = dates[0];
+
+  const totalDays   = dates.length;
+  const totalAgents = new Set(dates.flatMap(d => Object.keys(processedDays[d]))).size;
+  const totalCalls  = dates.reduce((s,d) => s + Object.values(processedDays[d]).reduce((ss,a)=>ss+a.calls,0), 0);
+
+  document.getElementById('import-summary').innerHTML =
+    '<span class="badge badge-gold">📅 ' + totalDays + ' Day(s)</span>' +
+    '<span class="badge badge-info">👥 ' + totalAgents + ' Agent(s)</span>' +
+    '<span class="badge badge-blue">📞 ' + totalCalls + ' Calls</span>';
+
+  document.getElementById('day-tabs').innerHTML = dates.map(d =>
+    '<div class="day-tab ' + (d===selectedDay?'active':'') + '" onclick="selectDay(\'' + d + '\')" id="tab-' + d + '">' + formatDateShort(d) + '</div>'
+  ).join('');
+
+  document.getElementById('panel-upload').style.display = 'none';
+  document.getElementById('panel-review').style.display = 'block';
+  renderDayTable(selectedDay);
+}
+
+function selectDay(date) {
+  document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById('tab-'+date);
+  if (tab) tab.classList.add('active');
+  selectedDay = date;
+  renderDayTable(date);
+}
+
+function renderDayTable(date) {
+  const TARGET_SEC = getTargetForDate(date);
+  const tbody   = document.getElementById('review-tbody');
+  const dayData = processedDays[date] || {};
+
+  if (!Object.keys(dayData).length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">📭</span>No data</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = Object.entries(dayData).map(function(entry) {
+    const name = entry[0]; const d = entry[1];
+    const missing = Math.max(0, TARGET_SEC - d.activeSec);
+    const conf    = TARGET_SEC > 0 ? Math.min(100, (d.activeSec / TARGET_SEC) * 100) : 0;
+    const avgAHT  = d.calls > 0 ? Math.round(d.talkSec / d.calls) : 0;
+    const cls     = conf>=98?'conf-high':conf>=90?'conf-mid':'conf-low';
+    return '<tr>' +
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">' + initials(name) + '</div><span style="font-weight:700;">' + name + '</span></div></td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + secToTime(d.activeSec) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;color:var(--muted);">' + secToTime(TARGET_SEC) + '</td>' +
+      '<td class="' + cls + '">' + conf.toFixed(0) + '%</td>' +
+      '<td style="color:' + (missing>300?'#EF4444':'#10B981') + ';font-size:12px;">' + (missing<=300?'Full Time':secToTime(missing)) + '</td>' +
+      '<td style="font-weight:700;">' + d.calls + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + (avgAHT?secToTime(avgAHT):'—') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function saveAll() {
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+
+  try {
+    // ── Time offset from Time Adjust option ──
+    const hourOffset = document.getElementById('time-adjust').value === 'on' ? 3600 : 0;
+    const applyOffset = s => {
+      if (s === null || s === undefined) return s;
+      const parts = s.split(':').map(Number);
+      const totalSec = parts[0]*3600 + parts[1]*60 + (parts[2]||0) + hourOffset;
+      const adj = ((totalSec % 86400) + 86400) % 86400;
+      const h = Math.floor(adj/3600).toString().padStart(2,'0');
+      const m = Math.floor((adj%3600)/60).toString().padStart(2,'0');
+      const sec = Math.floor(adj%60).toString().padStart(2,'0');
+      return `${h}:${m}:${sec}`;
+    };
+
+    const allDates = Object.keys(processedDays).sort();
+    const dateFrom = allDates[0];
+    const dateTo   = allDates[allDates.length-1];
+
+    // ── Check for existing data ──
+    const { data: existingRows } = await db.from('daily_performance')
+      .select('perf_date')
+      .gte('perf_date', dateFrom)
+      .lte('perf_date', dateTo);
+
+    const existingDates = [...new Set((existingRows || []).map(r => r.perf_date))].sort();
+
+    if (existingDates.length > 0) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-upload"></i> Save to Database';
+      const dateList = existingDates.map(d => `• ${d}`).join('\n');
+      const confirmed = confirm(
+        `⚠️ تحذير — بيانات موجودة مسبقاً!\n\nالتواريخ التالية موجودة في الـ Database:\n${dateList}\n\nالاستمرار هيكتب فوق البيانات الموجودة.\nهل أنت متأكد؟`
+      );
+      if (!confirmed) return;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    } else {
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    }
+
+    const { data: excusesData } = await db.from('excuses')
+      .select('agent_id,agent_name,excuse_date,excuse_type')
+      .eq('status','Approved')
+      .gte('excuse_date', dateFrom)
+      .lte('excuse_date', dateTo);
+
+    const excusesMap = {};
+    (excusesData||[]).forEach(e => {
+      const key = e.agent_name.toLowerCase()+'_'+e.excuse_date;
+      excusesMap[key] = true;
+    });
+
+    const upserts = [];
+    Object.entries(processedDays).forEach(function(dayEntry) {
+      const date    = dayEntry[0];
+      const dayData = dayEntry[1];
+      const TARGET_SEC = getTargetForDate(date);
+
+      Object.entries(dayData).forEach(function(agentEntry) {
+        const name = agentEntry[0]; const d = agentEntry[1];
+        const normalize = s => (s||'').toLowerCase().replace(/\s+/g, '');
+        const agent = allAgents.find(a =>
+          normalize(a.xcally_name) === normalize(name) ||
+          normalize(a.formal_name) === normalize(name)
+        );
+
+        const excKey     = name.toLowerCase()+'_'+date;
+        const hasExcuse  = !!excusesMap[excKey];
+        const EXC_SEC    = 2 * 3600;
+        const rawMissing = Math.max(0, TARGET_SEC - d.activeSec);
+        const avgAHT     = d.calls > 0 ? Math.round(d.talkSec / d.calls) : 0;
+
+        let netMissing, conf;
+        if (hasExcuse && rawMissing <= EXC_SEC) {
+          netMissing = 0; conf = 100;
+        } else if (hasExcuse && rawMissing > EXC_SEC) {
+          netMissing = rawMissing - EXC_SEC;
+          conf = Math.min(100, (d.activeSec / TARGET_SEC) * 100);
+        } else {
+          netMissing = rawMissing;
+          conf = TARGET_SEC > 0 ? Math.min(100, (d.activeSec / TARGET_SEC) * 100) : 0;
+        }
+
+        upserts.push({
+          agent_id:      agent?.id || null,
+          agent_name:    agent?.formal_name || name,
+          perf_date:     date,
+          active_sec:    d.activeSec,
+          target_sec:    TARGET_SEC,
+          conformance:   parseFloat(conf.toFixed(2)),
+          missing_sec:   netMissing,
+          calls:         d.calls,
+          talk_sec:      d.talkSec,
+          avg_aht:       avgAHT,
+          login_time:    d.loginSec      != null ? applyOffset(secToTimeStr(d.loginSec))      : null,
+          logout_time:   d.lastLogoutSec != null ? applyOffset(secToTimeStr(d.lastLogoutSec)) : null,
+          actual_break1: d.break1Sec    != null ? applyOffset(secToTimeStr(d.break1Sec))    : null,
+          actual_lunch:  d.lunchSec     != null ? applyOffset(secToTimeStr(d.lunchSec))     : null,
+          actual_break2: d.break2Sec    != null ? applyOffset(secToTimeStr(d.break2Sec))    : null,
+          updated_at:    new Date().toISOString(),
+        });
+      });
+    });
+
+    // ── Build AUX records ──
+    const auxUpserts = [];
+    Object.entries(processedDays).forEach(function([date, dayData]) {
+      Object.entries(dayData).forEach(function([name, d]) {
+        if (!d.auxes || !Object.keys(d.auxes).length) return;
+        const normalize = s => (s||'').toLowerCase().replace(/\s+/g,'');
+        const agent = allAgents.find(a =>
+          normalize(a.xcally_name) === normalize(name) ||
+          normalize(a.formal_name) === normalize(name)
+        );
+        Object.entries(d.auxes).forEach(function([auxType, totalSec]) {
+          auxUpserts.push({
+            agent_id:   agent?.id   || null,
+            agent_name: agent?.formal_name || name,
+            log_date:   date,
+            aux_type:   auxType,
+            total_sec:  totalSec,
+            updated_at: new Date().toISOString(),
+          });
+        });
+      });
+    });
+
+    // ── Build CALL RECORDS (no raw_data overhead) ──
+    const callRecords = [];
+    Object.entries(processedDays).forEach(function([date, dayData]) {
+      Object.entries(dayData).forEach(function([name, d]) {
+        if (!d.callsList || !d.callsList.length) return;
+        const normalize = s => (s||'').toLowerCase().replace(/\s+/g,'');
+        const agent = allAgents.find(a =>
+          normalize(a.xcally_name) === normalize(name) ||
+          normalize(a.formal_name) === normalize(name)
+        );
+        d.callsList.forEach(call => {
+          callRecords.push({
+           call_date:        (date ? (date.match(/\d{4}-\d{2}-\d{2}/) || [date])[0] : null),
+            call_time:       (call.time ? (call.time.match(/\d{2}:\d{2}:\d{2}/) || ['00:00:00'])[0] : '00:00:00'),
+            agent_id:        agent?.id     || null,
+            agent_name:      agent?.formal_name || name,
+            customer_name:   call.customer || null,
+            customer_mobile: call.mobile   || null,
+            call_reason:     null,
+            call_source:     call.source   || 'inbound',
+            call_channel:    'phone',
+            call_duration:   Math.round(call.duration),
+            talk_duration:   Math.round(call.duration),
+            media_url:       null,
+            event_type:      call.source   || 'inbound',
+          });
+        });
+      });
+    });
+
+    // ── Helper: sequential batch upsert for one table ──
+    async function batchUpsert(table, records, conflictKey) {
+      for (let i = 0; i < records.length; i += 100) {
+        const { error } = await db.from(table)
+          .upsert(records.slice(i, i + 100), { onConflict: conflictKey });
+        if (error) throw error;
+      }
+    }
+
+    // ── Save core tables in PARALLEL ──
+    await Promise.all([
+      batchUpsert('daily_performance', upserts,   'agent_id,perf_date'),
+      auxUpserts.length ? batchUpsert('xcally_aux_logs', auxUpserts, 'agent_id,log_date,aux_type') : Promise.resolve(),
+    ]);
+    logAudit({ module: 'xCally Import', action: 'IMPORT', targetTable: 'daily_performance',
+      description: `Imported xCally report: ${upserts.length} performance record(s)` + (auxUpserts.length ? ` + ${auxUpserts.length} aux record(s)` : '') });
+
+    // ── Save call records independently (optional — won't affect main save) ──
+    if (callRecords.length) {
+      try {
+        await batchUpsert('xcally_calls_logs', callRecords, 'agent_name,call_date,call_time,call_source');
+      } catch(e) {
+        console.warn('xcally_calls_logs save skipped:', e.message);
+      }
+    }
+
+    showToast(upserts.length + ' records saved!' + (callRecords.length ? ' + ' + callRecords.length + ' call records' : ''), 'success');
+    setStep(3);
+    btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+
+  } catch(e) {
+    showToast('Save failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save All Days';
+  }
+}
+
+function setViewMode(mode, btn) {
+  viewModeVal = mode;
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('filter-single').style.display     = (mode==='day'||mode==='week') ? 'block' : 'none';
+  document.getElementById('filter-month-wrap').style.display = mode==='month' ? 'block' : 'none';
+  document.getElementById('filter-range-wrap').style.display = mode==='range' ? 'block' : 'none';
+  loadHistory();
+}
+
+async function loadHistory() {
+  const tbody  = document.getElementById('history-tbody');
+  const agentF = document.getElementById('filter-agent').value;
+  tbody.innerHTML = '<tr><td colspan="8"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+
+  try {
+    let fromDate, toDate;
+    if (viewModeVal==='day') {
+      fromDate = toDate = document.getElementById('filter-date').value || TODAY;
+    } else if (viewModeVal==='week') {
+      const d = new Date(document.getElementById('filter-date').value || TODAY);
+      const sun = new Date(d); sun.setDate(d.getDate()-d.getDay());
+      const sat = new Date(sun); sat.setDate(sun.getDate()+6);
+      fromDate = sun.toISOString().split('T')[0];
+      toDate   = sat.toISOString().split('T')[0];
+    } else if (viewModeVal==='month') {
+      const m = document.getElementById('filter-month').value;
+      const y = document.getElementById('filter-year').value;
+      fromDate = y+'-'+m+'-01';
+      const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+      toDate = y+'-'+m+'-'+String(lastDay).padStart(2,'0');
+    } else {
+      fromDate = document.getElementById('filter-from').value;
+      toDate   = document.getElementById('filter-to').value;
+    }
+    if (!fromDate) return;
+
+    document.getElementById('history-label').innerText = fromDate + (toDate&&toDate!==fromDate?' → '+toDate:'');
+
+    let query = db.from('daily_performance').select('*')
+      .gte('perf_date', fromDate).lte('perf_date', toDate||fromDate)
+      .order('perf_date',{ascending:false}).order('agent_name');
+    if (agentF) query = query.eq('agent_name', agentF);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    currentHistoryData = data||[];
+    updateHistoryKPIs(currentHistoryData);
+    renderHistoryTable(currentHistoryData);
+    if (historyTabMode==='summary') renderSummaryTable(currentHistoryData);
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">❌</span>Failed</div></td></tr>';
+    showToast('Failed: '+e.message, 'error');
+  }
+}
+
+let currentHistoryData = [];
+let historyTabMode = 'detailed';
+
+function setHistoryTab(mode, btn) {
+  historyTabMode = mode;
+  document.querySelectorAll('#ht-detailed,#ht-summary').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('table-detailed').style.display = mode==='detailed' ? 'block' : 'none';
+  document.getElementById('table-summary').style.display  = mode==='summary'  ? 'block' : 'none';
+  if (mode==='summary') renderSummaryTable(currentHistoryData);
+}
+
+// ── SUMMARY TABLE — Net Missing (Total Missing - Total Extra) ──
+function renderSummaryTable(data) {
+  const tbody = document.getElementById('summary-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">📭</span>No data</div></td></tr>';
+    return;
+  }
+
+  const agentMap = {};
+  data.forEach(r => {
+    const name = r.agent_name;
+    if (!agentMap[name]) agentMap[name] = {
+      name, days:0, totalMissing:0, totalExtra:0,
+      totalCalls:0, totalTalk:0, confSum:0, below98:0
+    };
+    const a = agentMap[name];
+    a.days++;
+    // الـ missing الفعلي بعد الـ excuse
+    a.totalMissing += r.missing_sec || 0;
+    // الـ extra = لو اشتغل أكتر من الـ target
+    const extra = Math.max(0, (r.active_sec || 0) - (r.target_sec || 0));
+    a.totalExtra   += extra;
+    a.totalCalls   += r.calls    || 0;
+    a.totalTalk    += r.talk_sec || 0;
+    a.confSum      += parseFloat(r.conformance||0);
+    if (parseFloat(r.conformance||0) < 98) a.below98++;
+  });
+
+  const rows = Object.values(agentMap).sort((a,b) => b.confSum/b.days - a.confSum/a.days);
+
+  tbody.innerHTML = rows.map(a => {
+    const avgConf  = a.days > 0 ? a.confSum/a.days : 0;
+    const avgAHT   = a.totalCalls > 0 ? Math.round(a.totalTalk/a.totalCalls) : 0;
+    // Net Missing = Total Missing - Total Extra
+    const netMissing = Math.max(0, a.totalMissing - a.totalExtra);
+    const missingDisplay = netMissing <= 300 ? 'Full Time' : secToTime(netMissing);
+    const confCls  = avgConf>=98?'conf-high':avgConf>=90?'conf-mid':'conf-low';
+    return '<tr>' +
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">' + initials(a.name) + '</div><span style="font-weight:700;">' + a.name + '</span></div></td>' +
+      '<td style="text-align:center;font-weight:700;">' + a.days + '</td>' +
+      '<td class="' + confCls + '">' + avgConf.toFixed(0) + '%</td>' +
+      '<td style="color:' + (netMissing>300?'#EF4444':'#10B981') + ';font-size:12px;font-weight:700;">' + missingDisplay + '</td>' +
+      '<td style="font-weight:700;">' + a.totalCalls + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + (avgAHT?secToTime(avgAHT):'—') + '</td>' +
+      '<td><span class="badge ' + (a.below98>0?'badge-danger':'badge-success') + '">' + a.below98 + ' day(s)</span></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function updateHistoryKPIs(data) {
+  if (!data.length) {
+    ['h-conf','h-calls','h-aht','h-below','h-days'].forEach(id => document.getElementById(id).innerText='—');
+    return;
+  }
+  const avgConf    = data.reduce((s,r)=>s+parseFloat(r.conformance||0),0)/data.length;
+  const totalCalls = data.reduce((s,r)=>s+(r.calls||0),0);
+  const ahtArr     = data.filter(r=>r.avg_aht>0);
+  const ahtAvg     = ahtArr.length ? ahtArr.reduce((s,r)=>s+r.avg_aht,0)/ahtArr.length : 0;
+  const below98    = data.filter(r=>parseFloat(r.conformance||0)<98).length;
+  const days       = new Set(data.map(r=>r.perf_date)).size;
+  document.getElementById('h-conf').innerText  = avgConf.toFixed(0)+'%';
+  document.getElementById('h-calls').innerText = totalCalls;
+  document.getElementById('h-aht').innerText   = ahtAvg ? secToTime(Math.round(ahtAvg)) : '—';
+  document.getElementById('h-below').innerText = below98;
+  document.getElementById('h-days').innerText  = days;
+}
+
+function renderHistoryTable(data) {
+  const tbody = document.getElementById('history-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">📭</span>No data found</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(function(r) {
+    const conf = parseFloat(r.conformance||0);
+    const cls  = conf>=98?'conf-high':conf>=90?'conf-mid':'conf-low';
+    return '<tr>' +
+      '<td style="font-weight:700;color:var(--gold);white-space:nowrap;">' + formatDateShort(r.perf_date) + '</td>' +
+      '<td><div style="display:flex;align-items:center;gap:8px;"><div class="agent-avatar" style="width:24px;height:24px;font-size:9px;">' + initials(r.agent_name) + '</div><span style="font-weight:700;">' + r.agent_name + '</span></div></td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + secToTime(r.active_sec) + '</td>' +
+      '<td class="' + cls + '">' + conf.toFixed(0) + '%</td>' +
+      '<td style="color:' + (r.missing_sec>300?'#EF4444':'#10B981') + ';font-size:12px;">' + (r.missing_sec<=300?'Full Time':secToTime(r.missing_sec)) + '</td>' +
+      '<td style="font-weight:700;">' + (r.calls||0) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + (r.avg_aht?secToTime(r.avg_aht):'—') + '</td>' +
+      '<td><button class="btn btn-danger btn-sm btn-icon" onclick="deleteRecord(\'' + r.id + '\')" title="Delete"><i class="fas fa-trash"></i></button></td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function deleteRecord(id) {
+  try {
+    await db.from('daily_performance').delete().eq('id', id);
+    logAudit({ module: 'xCally Import', action: 'DELETE', targetTable: 'daily_performance', targetId: id,
+      description: `Deleted daily performance record (id: ${id})` });
+    showToast('Deleted!', 'warning');
+    loadHistory();
+  } catch(e) { showToast('Failed: '+e.message, 'error'); }
+}
+
+function setStep(n) {
+  if (n===2) {
+    document.getElementById('step-1').className='step done';
+    document.getElementById('sn-1').innerHTML='<i class="fas fa-check"></i>';
+    document.getElementById('sl-1').className='step-line done';
+    document.getElementById('step-2').className='step active';
+  }
+  if (n===3) {
+    document.getElementById('step-2').className='step done';
+    document.getElementById('sn-2').innerHTML='<i class="fas fa-check"></i>';
+    document.getElementById('sl-2').className='step-line done';
+    document.getElementById('step-3').className='step active';
+    document.getElementById('sn-3').innerHTML='<i class="fas fa-check"></i>';
+  }
+}
+
+function goBackToUpload() {
+  document.getElementById('panel-upload').style.display='block';
+  document.getElementById('panel-review').style.display='none';
+  document.getElementById('step-1').className='step active';
+  document.getElementById('sn-1').innerText='1';
+  document.getElementById('sl-1').className='step-line';
+  document.getElementById('step-2').className='step';
+}
+
+function extractTimeSec(str) {
+  if (!str) return -1;
+  const m = str.match(/(\d{1,2}):(\d{2}):(\d{2})\s*$/);
+  if (!m) return -1;
+  return (+m[1])*3600 + (+m[2])*60 + (+m[3]);
+}
+
+function splitLine(line, isTab) {
+  const sep = isTab ? '\t' : ',';
+  const result=[]; let cur=''; let inQ=false;
+  for (const ch of line) {
+    if (ch==='"') { inQ=!inQ; }
+    else if (ch===sep && !inQ) { result.push(cur.trim()); cur=''; }
+    else { cur+=ch; }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function extractDate(str) {
+  if (!str) return null;
+  let m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  m = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1]+'-'+m[2]+'-'+m[3];
+  return null;
+}
+
+function timeToSec(val) {
+  if (!val) return 0;
+  const p = val.toString().trim().split(':');
+  if (p.length===3) return (+p[0])*3600+(+p[1])*60+(+p[2]);
+  if (p.length===2) return (+p[0])*60+(+p[1]);
+  return 0;
+}
+
+function secToTime(s) {
+  if (!s && s!==0) return '—';
+  const h=Math.floor(s/3600).toString().padStart(2,'0');
+  const m=Math.floor((s%3600)/60).toString().padStart(2,'0');
+  const sec=Math.floor(s%60).toString().padStart(2,'0');
+  return h+':'+m+':'+sec;
+}
+// DB-safe version (same format, different name for clarity)
+function secToTimeStr(s) { return secToTime(s); }
+
+function formatDateShort(d) {
+  if (!d) return '—';
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+}
+
+async function reapplyExcuses() {
+  const btn = document.querySelector('[onclick="reapplyExcuses()"]');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+  try {
+    const { data: excuses } = await db.from('excuses').select('*').eq('status','Approved');
+    if (!excuses || !excuses.length) { showToast('No approved excuses found', 'warning'); return; }
+
+    const dates = [...new Set(excuses.map(e => e.excuse_date))];
+    const { data: perfData } = await db.from('daily_performance').select('*').in('perf_date', dates);
+    if (!perfData || !perfData.length) { showToast('No performance data found for excuse dates', 'warning'); return; }
+
+    const EXC_SEC = 2 * 3600;
+    let updated = 0;
+
+    for (const exc of excuses) {
+      const perf = perfData.find(p =>
+        p.perf_date === exc.excuse_date &&
+        (p.agent_id === exc.agent_id ||
+         p.agent_name.toLowerCase() === exc.agent_name.toLowerCase())
+      );
+      if (!perf) continue;
+
+      const TARGET_SEC = perf.target_sec || 28800;
+      const rawMissing = Math.max(0, TARGET_SEC - perf.active_sec);
+      let netMissing, conf;
+
+      if (rawMissing <= EXC_SEC) {
+        netMissing = 0;
+        conf = 100;
+      } else {
+        netMissing = rawMissing - EXC_SEC;
+        const effectiveActive = perf.active_sec + EXC_SEC;
+        conf = Math.min(100, (effectiveActive / TARGET_SEC) * 100);
+      }
+
+      await db.from('daily_performance').update({
+        conformance: parseFloat(conf.toFixed(2)),
+        missing_sec: netMissing,
+        updated_at:  new Date().toISOString()
+      }).eq('id', perf.id);
+
+      updated++;
+    }
+
+    if (updated > 0) logAudit({ module: 'xCally Import', action: 'UPDATE', targetTable: 'daily_performance',
+      description: `Recalculated conformance for ${updated} record(s)` });
+    showToast('✅ Updated ' + updated + ' record(s)!', 'success');
+
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sync-alt"></i> Re-apply Excuses';
+  }
+}
+
+// ══════════════════════════════════════════
+//  AUX REPORT — Smart Dual Mode (CSV + DB)
+// ══════════════════════════════════════════
+let auxModeVal   = 'day';
+let auxSourceVal = 'csv';  // 'csv' | 'db'
+let auxParsedData = {};    // result of parseAuxCSV, keyed by date→agent→auxType
+const AUX_COLORS = ['#D4AF37','#10B981','#3B82F6','#8B5CF6','#EF4444','#F59E0B','#EC4899','#14B8A6','#F97316'];
+const BREAK_TYPES_SET = new Set(['break 1','lunch','break 2','inbound','universalbar','login','logout','ready','not ready','']);
+
+function setAuxSource(src, btn) {
+  auxSourceVal = src;
+  document.querySelectorAll('[id^="aux-src-"]').forEach(b => {
+    b.style.background   = 'var(--surface2)';
+    b.style.color        = 'var(--muted)';
+    b.style.borderColor  = 'var(--border)';
+  });
+  btn.style.background  = 'var(--gold-grad)';
+  btn.style.color       = '#000';
+  btn.style.borderColor = 'var(--gold)';
+  document.getElementById('aux-panel-csv').style.display = src==='csv' ? 'block' : 'none';
+  document.getElementById('aux-panel-db').style.display  = src==='db'  ? 'block' : 'none';
+  document.getElementById('aux-save-wrap').style.display = 'none';
+  if (src==='db') loadAuxReport();
+}
+
+// ── CSV drag/drop helpers ──
+function auxHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('aux-drop-zone').classList.remove('drag-over');
+  auxHandleFile(e.dataTransfer.files[0]);
+}
+function auxHandleDragOver(e)  { e.preventDefault(); document.getElementById('aux-drop-zone').classList.add('drag-over'); }
+function auxHandleDragLeave()  { document.getElementById('aux-drop-zone').classList.remove('drag-over'); }
+function auxHandleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('aux-csv-paste').value = e.target.result;
+    document.getElementById('aux-drop-zone').innerHTML =
+      `<i class="fas fa-check-circle" style="color:#10B981;"></i><h3 style="color:#10B981;">✅ ${file.name}</h3><p>${(file.size/1024).toFixed(1)} KB loaded</p>`;
+    showToast('File loaded — click Parse!', 'success');
+  };
+  reader.readAsText(file);
+}
+function auxResetResults() {
+  document.getElementById('aux-csv-results').style.display = 'none';
+  document.getElementById('aux-save-wrap').style.display   = 'none';
+  auxParsedData = {};
+}
+
+// ── CORE PARSER (shared with main import) ──
+function parseAuxCSV() {
+  const raw = document.getElementById('aux-csv-paste').value.trim();
+  if (!raw) { showToast('Paste or upload CSV first', 'error'); return; }
+
+  const btn = document.getElementById('aux-parse-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Parsing...';
+
+  try {
+    const lines  = raw.split('\n').filter(l => l.trim());
+    const isTab  = lines.length > 1 && lines[1].includes('\t');
+    let startIdx = 0;
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const lower = lines[i].toLowerCase();
+      if (lower.includes('agent') || lower.includes('enterat') || lower.includes('duration')) {
+        startIdx = i + 1; break;
+      }
+    }
+
+    // byDay[date][agent][auxType] = totalSec
+    const byDay = {};
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols      = splitLine(lines[i], isTab);
+      if (cols.length < 5) continue;
+      const agentName = cols[0]?.trim();
+      const eventType = cols[5]?.trim().toLowerCase();
+      const evtEvent  = cols[3]?.trim().toUpperCase();
+      const duration  = cols[4]?.trim();
+      const dateRaw   = cols[8]?.trim() || cols[1]?.trim() || '';
+      if (!agentName || agentName.toLowerCase() === 'agent') continue;
+      const date = extractDate(dateRaw);
+      if (!date) continue;
+      // only PAUSE events that are NOT standard breaks / call types
+      if (evtEvent !== 'PAUSE') continue;
+      if (BREAK_TYPES_SET.has(eventType)) continue;
+      const sec = timeToSec(duration);
+      if (sec <= 0) continue;
+      const auxKey = eventType.trim().toUpperCase() || 'OTHER';
+      if (!byDay[date])             byDay[date]             = {};
+      if (!byDay[date][agentName])  byDay[date][agentName]  = {};
+      byDay[date][agentName][auxKey] = (byDay[date][agentName][auxKey] || 0) + sec;
+    }
+
+    if (!Object.keys(byDay).length) {
+      showToast('No aux data found — check CSV format', 'error');
+      return;
+    }
+
+    auxParsedData = byDay;
+    renderAuxCSVResults(byDay);
+    document.getElementById('aux-save-wrap').style.display = 'block';
+    showToast('Parsed ' + Object.keys(byDay).length + ' day(s)!', 'success');
+
+  } catch(e) {
+    showToast('Parse error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-magic"></i> Parse Aux Data';
+  }
+}
+
+function renderAuxCSVResults(byDay) {
+  const dates     = Object.keys(byDay).sort();
+  const allAgents = [...new Set(dates.flatMap(d => Object.keys(byDay[d])))].sort();
+  const allTypes  = [...new Set(dates.flatMap(d =>
+    Object.keys(byDay[d]).flatMap(a => Object.keys(byDay[d][a]))
+  ))].sort();
+
+  // label
+  document.getElementById('aux-csv-label').innerText =
+    dates[0] + (dates.length > 1 ? ' → ' + dates[dates.length-1] : '');
+
+  // KPI bar — total per aux type across all days
+  const typeTotals = {};
+  dates.forEach(d => Object.keys(byDay[d]).forEach(a =>
+    Object.entries(byDay[d][a]).forEach(([t,s]) => { typeTotals[t] = (typeTotals[t]||0) + s; })
+  ));
+  document.getElementById('aux-kpi-bar-csv').innerHTML =
+    Object.entries(typeTotals).sort((a,b)=>b[1]-a[1]).map(([type,sec],i) => `
+      <div class="kpi-card" style="border-top-color:${AUX_COLORS[i%AUX_COLORS.length]};">
+        <span class="kpi-icon">⏱️</span>
+        <div class="kpi-label">${type}</div>
+        <div class="kpi-value" style="font-size:16px;color:${AUX_COLORS[i%AUX_COLORS.length]};">${secToTime(sec)}</div>
+      </div>`).join('');
+
+  // Agent summary table (all days aggregated)
+  const agentTotals = {};
+  dates.forEach(d => Object.entries(byDay[d]).forEach(([agent, types]) => {
+    if (!agentTotals[agent]) agentTotals[agent] = { total:0 };
+    Object.entries(types).forEach(([t,s]) => {
+      agentTotals[agent][t] = (agentTotals[agent][t]||0) + s;
+      agentTotals[agent].total += s;
+    });
+  }));
+
+  document.getElementById('aux-csv-thead').innerHTML =
+    '<th>Agent</th>' +
+    allTypes.map((t,i)=>`<th style="color:${AUX_COLORS[i%AUX_COLORS.length]};">${t}</th>`).join('') +
+    '<th>Total</th>';
+
+  document.getElementById('aux-csv-tbody').innerHTML =
+    Object.entries(agentTotals).sort((a,b)=>b[1].total-a[1].total).map(([name,d]) => {
+      const cells = allTypes.map((t,i) => {
+        const sec = d[t]||0;
+        return sec>0
+          ? `<td style="font-family:monospace;font-size:12px;color:${AUX_COLORS[i%AUX_COLORS.length]};font-weight:700;">${secToTime(sec)}</td>`
+          : `<td style="color:var(--muted);font-size:12px;">—</td>`;
+      }).join('');
+      return `<tr>
+        <td><div style="display:flex;align-items:center;gap:8px;">
+          <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(name)}</div>
+          <span style="font-weight:700;">${name}</span>
+        </div></td>
+        ${cells}
+        <td style="font-family:monospace;font-size:12px;font-weight:800;color:var(--gold);">${secToTime(d.total)}</td>
+      </tr>`;
+    }).join('');
+
+  // Daily detail table
+  document.getElementById('aux-csv-daily-thead').innerHTML =
+    '<th>Date</th><th>Agent</th>' +
+    allTypes.map((t,i)=>`<th style="color:${AUX_COLORS[i%AUX_COLORS.length]};">${t}</th>`).join('') +
+    '<th>Total</th>';
+
+  const dailyRows = [];
+  dates.forEach(d => Object.entries(byDay[d]).forEach(([agent, types]) => {
+    const total = Object.values(types).reduce((s,v)=>s+v,0);
+    dailyRows.push({ date:d, agent, types, total });
+  }));
+
+  document.getElementById('aux-csv-daily-tbody').innerHTML =
+    dailyRows.sort((a,b)=>a.date.localeCompare(b.date)||a.agent.localeCompare(b.agent)).map(r => {
+      const cells = allTypes.map((t,i) => {
+        const sec = r.types[t]||0;
+        return sec>0
+          ? `<td style="font-family:monospace;font-size:12px;color:${AUX_COLORS[i%AUX_COLORS.length]};font-weight:700;">${secToTime(sec)}</td>`
+          : `<td style="color:var(--muted);font-size:12px;">—</td>`;
+      }).join('');
+      return `<tr>
+        <td style="font-weight:700;color:var(--gold);white-space:nowrap;font-size:12px;">${formatDateShort(r.date)}</td>
+        <td><div style="display:flex;align-items:center;gap:8px;">
+          <div class="agent-avatar" style="width:22px;height:22px;font-size:9px;">${initials(r.agent)}</div>
+          <span style="font-size:12px;font-weight:700;">${r.agent}</span>
+        </div></td>
+        ${cells}
+        <td style="font-family:monospace;font-size:12px;font-weight:800;color:var(--gold);">${secToTime(r.total)}</td>
+      </tr>`;
+    }).join('');
+
+  document.getElementById('aux-csv-results').style.display = 'block';
+}
+
+// ── Save parsed CSV aux data to DB ──
+async function saveAuxToDB() {
+  if (!Object.keys(auxParsedData).length) { showToast('Nothing to save', 'warning'); return; }
+  const btn = document.querySelector('[onclick="saveAuxToDB()"]');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  try {
+    const upserts = [];
+    Object.entries(auxParsedData).forEach(([date, agents]) => {
+      Object.entries(agents).forEach(([name, types]) => {
+        const normalize = s => (s||'').toLowerCase().replace(/\s+/g,'');
+        const agent = allAgents.find(a =>
+          normalize(a.xcally_name) === normalize(name) ||
+          normalize(a.formal_name) === normalize(name)
+        );
+        Object.entries(types).forEach(([auxType, totalSec]) => {
+          upserts.push({
+            agent_id:   agent?.id   || null,
+            agent_name: agent?.formal_name || name,
+            log_date:   date,
+            aux_type:   auxType,
+            total_sec:  totalSec,
+            updated_at: new Date().toISOString(),
+          });
+        });
+      });
+    });
+    for (let i = 0; i < upserts.length; i += 100) {
+      const { error } = await db.from('xcally_aux_logs')
+        .upsert(upserts.slice(i,i+100), { onConflict: 'agent_id,log_date,aux_type' });
+      if (error) throw error;
+    }
+    logAudit({ module: 'xCally Import', action: 'IMPORT', targetTable: 'xcally_aux_logs',
+      description: `Imported ${upserts.length} aux/pause record(s)` });
+    showToast(upserts.length + ' aux records saved to DB!', 'success');
+    btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+  } catch(e) {
+    showToast('Save failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save to DB';
+  }
+}
+
+// ── DB mode helpers ──
+function setAuxMode(mode, btn) {
+  auxModeVal = mode;
+  document.querySelectorAll('#aux-panel-db .view-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('aux-filter-single').style.display    = mode==='day'   ? 'block' : 'none';
+  document.getElementById('aux-filter-range-wrap').style.display= mode==='range' ? 'block' : 'none';
+  document.getElementById('aux-daily-section').style.display    = mode==='range' ? 'block' : 'none';
+  loadAuxReport();
+}
+
+async function loadAuxReport() {
+  const tbody       = document.getElementById('aux-tbody');
+  const theadRow    = document.getElementById('aux-thead-row');
+  const kpiBar      = document.getElementById('aux-kpi-bar');
+  const labelEl     = document.getElementById('aux-label');
+  const agentFilter = document.getElementById('aux-filter-agent').value;
+
+  tbody.innerHTML = '<tr><td colspan="10"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  theadRow.innerHTML = '';
+  kpiBar.innerHTML   = '';
+
+  try {
+    let fromDate, toDate;
+    if (auxModeVal === 'day') {
+      fromDate = toDate = document.getElementById('aux-filter-date').value || TODAY;
+    } else {
+      fromDate = document.getElementById('aux-from').value;
+      toDate   = document.getElementById('aux-to').value;
+      if (!fromDate || !toDate) {
+        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">📅</span>Select a date range</div></td></tr>';
+        return;
+      }
+    }
+    labelEl.innerText = fromDate + (toDate && toDate !== fromDate ? ' → ' + toDate : '');
+
+    let query = db.from('xcally_aux_logs')
+      .select('agent_name,log_date,aux_type,total_sec')
+      .gte('log_date', fromDate).lte('log_date', toDate)
+      .order('log_date').order('agent_name');
+    if (agentFilter) query = query.eq('agent_name', agentFilter);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = data || [];
+
+    if (!rows.length) {
+      kpiBar.innerHTML = '';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">⏱️</span>No saved aux data — use "From CSV" tab to parse directly</div></td></tr>';
+      return;
+    }
+
+    const allAuxTypes = [...new Set(rows.map(r => r.aux_type))].sort();
+
+    // KPI
+    const auxTotals = {};
+    rows.forEach(r => { auxTotals[r.aux_type] = (auxTotals[r.aux_type]||0) + r.total_sec; });
+    kpiBar.innerHTML = Object.entries(auxTotals).sort((a,b)=>b[1]-a[1]).map(([type,sec],i) => `
+      <div class="kpi-card" style="border-top-color:${AUX_COLORS[i%AUX_COLORS.length]};">
+        <span class="kpi-icon">⏱️</span>
+        <div class="kpi-label">${type}</div>
+        <div class="kpi-value" style="font-size:16px;color:${AUX_COLORS[i%AUX_COLORS.length]};">${secToTime(sec)}</div>
+      </div>`).join('');
+
+    // Agent aggregated table
+    const agentMap = {};
+    rows.forEach(r => {
+      if (!agentMap[r.agent_name]) agentMap[r.agent_name] = { total:0 };
+      agentMap[r.agent_name][r.aux_type] = (agentMap[r.agent_name][r.aux_type]||0) + r.total_sec;
+      agentMap[r.agent_name].total += r.total_sec;
+    });
+
+    theadRow.innerHTML = '<th>Agent</th>' +
+      allAuxTypes.map((t,i)=>`<th style="color:${AUX_COLORS[i%AUX_COLORS.length]};">${t}</th>`).join('') +
+      '<th>Total</th>';
+
+    tbody.innerHTML = Object.entries(agentMap).sort((a,b)=>b[1].total-a[1].total).map(([name,d]) => {
+      const cells = allAuxTypes.map((t,i) => {
+        const sec = d[t]||0;
+        return sec>0
+          ? `<td style="font-family:monospace;font-size:12px;color:${AUX_COLORS[i%AUX_COLORS.length]};font-weight:700;">${secToTime(sec)}</td>`
+          : `<td style="color:var(--muted);font-size:12px;">—</td>`;
+      }).join('');
+      return `<tr>
+        <td><div style="display:flex;align-items:center;gap:8px;">
+          <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(name)}</div>
+          <span style="font-weight:700;">${name}</span>
+        </div></td>${cells}
+        <td style="font-family:monospace;font-size:12px;font-weight:800;color:var(--gold);">${secToTime(d.total)}</td>
+      </tr>`;
+    }).join('');
+
+    // Daily detail (range mode)
+    if (auxModeVal === 'range') {
+      const dailyMap = {};
+      rows.forEach(r => {
+        const key = r.log_date+'||'+r.agent_name;
+        if (!dailyMap[key]) dailyMap[key] = { date:r.log_date, agent:r.agent_name, total:0 };
+        dailyMap[key][r.aux_type] = (dailyMap[key][r.aux_type]||0) + r.total_sec;
+        dailyMap[key].total += r.total_sec;
+      });
+      document.getElementById('aux-daily-thead').innerHTML =
+        '<th>Date</th><th>Agent</th>' +
+        allAuxTypes.map((t,i)=>`<th style="color:${AUX_COLORS[i%AUX_COLORS.length]};">${t}</th>`).join('') +
+        '<th>Total</th>';
+      document.getElementById('aux-daily-tbody').innerHTML =
+        Object.values(dailyMap).sort((a,b)=>a.date.localeCompare(b.date)||a.agent.localeCompare(b.agent)).map(d => {
+          const cells = allAuxTypes.map((t,i) => {
+            const sec = d[t]||0;
+            return sec>0
+              ? `<td style="font-family:monospace;font-size:12px;color:${AUX_COLORS[i%AUX_COLORS.length]};font-weight:700;">${secToTime(sec)}</td>`
+              : `<td style="color:var(--muted);font-size:12px;">—</td>`;
+          }).join('');
+          return `<tr>
+            <td style="font-weight:700;color:var(--gold);white-space:nowrap;font-size:12px;">${formatDateShort(d.date)}</td>
+            <td><div style="display:flex;align-items:center;gap:8px;">
+              <div class="agent-avatar" style="width:22px;height:22px;font-size:9px;">${initials(d.agent)}</div>
+              <span style="font-size:12px;font-weight:700;">${d.agent}</span>
+            </div></td>${cells}
+            <td style="font-family:monospace;font-size:12px;font-weight:800;color:var(--gold);">${secToTime(d.total)}</td>
+          </tr>`;
+        }).join('');
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><span class="empty-icon">❌</span>Failed: ${e.message}</div></td></tr>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>

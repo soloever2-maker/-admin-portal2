@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Audit Log</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ═══ Summary chips ═══ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.stat-chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.stat-chip .ico {
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.stat-chip .val { font-size: 21px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.stat-chip .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ═══ Filter bar ═══ */
+.filter-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.pill-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.f-pill {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  font-family: inherit;
+}
+.f-pill:hover { border-color: var(--gold); color: var(--text); }
+.f-pill.on {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #000;
+}
+.f-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.f-search {
+  flex: 1;
+  min-width: 180px;
+  position: relative;
+}
+.f-search i {
+  position: absolute; left: 12px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted); font-size: 12px;
+}
+.f-search input {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  font-family: inherit;
+  transition: border 0.2s;
+}
+.f-search input:focus { border-color: var(--gold); }
+.f-select {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.f-date {
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  font-family: inherit;
+}
+
+/* ═══ Timeline ═══ */
+.day-group { margin-bottom: 26px; }
+.day-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.day-label .day-text {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.day-label .day-line { flex: 1; height: 1px; background: var(--border); }
+.day-label .day-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 2px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.entry {
+  display: flex;
+  gap: 14px;
+  padding: 13px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.18s, transform 0.18s;
+  cursor: default;
+}
+.entry.has-detail { cursor: pointer; }
+.entry.has-detail:hover { border-color: var(--gold); transform: translateX(3px); }
+
+.entry .act-ico {
+  width: 38px; height: 38px;
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.ico-INSERT { background: rgba(16,185,129,0.12);  color: #10B981; }
+.ico-UPDATE { background: rgba(59,130,246,0.12);  color: #3B82F6; }
+.ico-DELETE { background: rgba(239,68,68,0.12);   color: #EF4444; }
+.ico-IMPORT { background: rgba(212,175,55,0.14);  color: var(--gold); }
+
+.entry-body { flex: 1; min-width: 0; }
+.entry-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.entry-admin {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+.entry-module {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.mod-Schedule       { color: #8B5CF6; border-color: rgba(139,92,246,0.35); background: rgba(139,92,246,0.08); }
+.mod-Adherence      { color: #F59E0B; border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.08); }
+.mod-Waiving        { color: #10B981; border-color: rgba(16,185,129,0.35); background: rgba(16,185,129,0.08); }
+.mod-xCally         { color: #06B6D4; border-color: rgba(6,182,212,0.35);  background: rgba(6,182,212,0.08); }
+.mod-Annual         { color: #EC4899; border-color: rgba(236,72,153,0.35); background: rgba(236,72,153,0.08); }
+
+.entry-time { font-size: 11px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+.entry-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  word-break: break-word;
+}
+.entry-desc b { color: var(--text); font-weight: 700; }
+.entry-chev {
+  align-self: center;
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.entry.open .entry-chev { transform: rotate(180deg); }
+
+.entry-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.entry-detail .d-label {
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 5px;
+}
+.entry-detail pre {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 70px 20px;
+  color: var(--muted);
+}
+.empty-state i { font-size: 40px; opacity: 0.3; margin-bottom: 14px; display: block; }
+.empty-state .t { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.empty-state .s { font-size: 12.5px; }
+
+.load-more-row { display: flex; justify-content: center; padding: 8px 0 30px; }
+
+@media (max-width: 700px) {
+  .entry-detail { grid-template-columns: 1fr; }
+  .entry-time { width: 100%; margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <!-- ── TOP BAR ── -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Audit Log</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Who did what — full action history
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm" onclick="loadData()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ── STATS ── -->
+      <div class="stats-row fade-up" id="stats-row"></div>
+
+      <!-- ── FILTER BAR ── -->
+      <div class="filter-bar fade-up">
+        <div class="pill-group" id="action-pills">
+          <button class="f-pill on" data-action="" onclick="setActionPill(this)">All</button>
+          <button class="f-pill" data-action="INSERT" onclick="setActionPill(this)">Added</button>
+          <button class="f-pill" data-action="UPDATE" onclick="setActionPill(this)">Changed</button>
+          <button class="f-pill" data-action="DELETE" onclick="setActionPill(this)">Deleted</button>
+          <button class="f-pill" data-action="IMPORT" onclick="setActionPill(this)">Imports</button>
+        </div>
+        <div class="f-divider"></div>
+        <select id="f-module" class="f-select" onchange="render()">
+          <option value="">All modules</option>
+          <option>Schedule</option>
+          <option>Adherence</option>
+          <option>Waiving</option>
+          <option>xCally Import</option>
+          <option>Annual Leave</option>
+        </select>
+        <select id="f-admin" class="f-select" onchange="render()">
+          <option value="">All admins</option>
+        </select>
+        <input type="date" id="f-from" class="f-date" onchange="render()" title="From date">
+        <input type="date" id="f-to" class="f-date" onchange="render()" title="To date">
+        <div class="f-search">
+          <i class="fas fa-search"></i>
+          <input type="text" id="f-search" oninput="render()" placeholder="Search agent, description...">
+        </div>
+      </div>
+
+      <!-- ── TIMELINE ── -->
+      <div id="timeline" class="fade-up"></div>
+
+      <div class="load-more-row">
+        <button class="btn btn-ghost btn-sm" id="load-more-btn" onclick="loadMore()" style="display:none;">
+          <i class="fas fa-chevron-down"></i> Load older entries
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText   = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+const PAGE_SIZE = 200;
+let allLogs = [];
+let oldestLoaded = null;
+let expandedId = null;
+let actionFilter = '';
+
+const ACTION_ICONS = { INSERT: 'fa-plus', UPDATE: 'fa-pen', DELETE: 'fa-trash', IMPORT: 'fa-file-import' };
+const ACTION_VERBS = { INSERT: 'added',   UPDATE: 'changed', DELETE: 'deleted', IMPORT: 'imported' };
+
+function moduleClass(m) {
+  if (m === 'Schedule')      return 'mod-Schedule';
+  if (m === 'Adherence')     return 'mod-Adherence';
+  if (m === 'Waiving')       return 'mod-Waiving';
+  if (m === 'xCally Import') return 'mod-xCally';
+  if (m === 'Annual Leave')  return 'mod-Annual';
+  return 'mod-Schedule';
+}
+
+async function loadData() {
+  document.getElementById('timeline').innerHTML =
+    '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><div class="t">Loading history...</div></div>';
+  const { data, error } = await db.from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE);
+  if (error) {
+    document.getElementById('timeline').innerHTML =
+      '<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><div class="t">Failed to load</div><div class="s">' + error.message + '</div></div>';
+    return;
+  }
+  allLogs = data || [];
+  oldestLoaded = allLogs.length ? allLogs[allLogs.length - 1].created_at : null;
+  document.getElementById('load-more-btn').style.display = allLogs.length === PAGE_SIZE ? '' : 'none';
+  buildAdminFilter();
+  render();
+}
+
+async function loadMore() {
+  if (!oldestLoaded) return;
+  const btn = document.getElementById('load-more-btn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+  const { data } = await db.from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .lt('created_at', oldestLoaded)
+    .limit(PAGE_SIZE);
+  const more = data || [];
+  allLogs = allLogs.concat(more);
+  oldestLoaded = more.length ? more[more.length - 1].created_at : null;
+  btn.disabled = false; btn.innerHTML = '<i class="fas fa-chevron-down"></i> Load older entries';
+  btn.style.display = more.length === PAGE_SIZE ? '' : 'none';
+  buildAdminFilter();
+  render();
+}
+
+function buildAdminFilter() {
+  const sel = document.getElementById('f-admin');
+  const current = sel.value;
+  const admins = [...new Set(allLogs.map(l => l.admin_username))].sort();
+  sel.innerHTML = '<option value="">All admins</option>' +
+    admins.map(a => `<option${a === current ? ' selected' : ''}>${a}</option>`).join('');
+}
+
+function setActionPill(btn) {
+  document.querySelectorAll('#action-pills .f-pill').forEach(p => p.classList.remove('on'));
+  btn.classList.add('on');
+  actionFilter = btn.dataset.action;
+  render();
+}
+
+function getFiltered() {
+  const fAdmin  = document.getElementById('f-admin').value;
+  const fModule = document.getElementById('f-module').value;
+  const fFrom   = document.getElementById('f-from').value;
+  const fTo     = document.getElementById('f-to').value;
+  const fSearch = document.getElementById('f-search').value.trim().toLowerCase();
+
+  return allLogs.filter(l => {
+    if (fAdmin  && l.admin_username !== fAdmin) return false;
+    if (fModule && l.module !== fModule) return false;
+    if (actionFilter && l.action !== actionFilter) return false;
+    const d = l.created_at.split('T')[0];
+    if (fFrom && d < fFrom) return false;
+    if (fTo   && d > fTo)   return false;
+    if (fSearch && !(l.description || '').toLowerCase().includes(fSearch)
+                && !(l.admin_username || '').toLowerCase().includes(fSearch)) return false;
+    return true;
+  });
+}
+
+function dayKey(ts) { return ts.split('T')[0]; }
+
+function dayTitle(key) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(key + 'T00:00:00');
+  const diff = Math.round((today - d) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function fmtClock(ts) {
+  return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderStats(rows) {
+  const today = new Date().toISOString().split('T')[0];
+  const todayCount = rows.filter(l => dayKey(l.created_at) === today).length;
+  const admins = {};
+  rows.forEach(l => { admins[l.admin_username] = (admins[l.admin_username] || 0) + 1; });
+  const topAdmin = Object.entries(admins).sort((a, b) => b[1] - a[1])[0];
+  const deletes = rows.filter(l => l.action === 'DELETE').length;
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-chip">
+      <div class="ico" style="background:rgba(212,175,55,0.14);color:var(--gold);"><i class="fas fa-clipboard-list"></i></div>
+      <div><div class="val">${rows.length}</div><div class="lbl">Total actions (loaded)</div></div>
+    </div>
+    <div class="stat-chip">
+      <div class="ico" style="background:rgba(59,130,246,0.12);color:#3B82F6;"><i class="fas fa-calendar-day"></i></div>
+      <div><div class="val">${todayCount}</div><div class="lbl">Actions today</div></div>
+    </div>
+    <div class="stat-chip">
+      <div class="ico" style="background:rgba(16,185,129,0.12);color:#10B981;"><i class="fas fa-user-shield"></i></div>
+      <div><div class="val" style="font-size:16px;">${topAdmin ? topAdmin[0] : '—'}</div><div class="lbl">Most active${topAdmin ? ' (' + topAdmin[1] + ' actions)' : ''}</div></div>
+    </div>
+    <div class="stat-chip">
+      <div class="ico" style="background:rgba(239,68,68,0.12);color:#EF4444;"><i class="fas fa-trash"></i></div>
+      <div><div class="val">${deletes}</div><div class="lbl">Deletions</div></div>
+    </div>`;
+}
+
+function highlightDesc(desc) {
+  // يبرز الأسماء والأرقام بين علامات تنصيص أو قبل كلمات مفتاحية
+  return (desc || '')
+    .replace(/"([^"]+)"/g, '<b>"$1"</b>')
+    .replace(/\b(\d+)\s+(shift entries|deviation\(s\)|record\(s\)|agent\(s\)|min|aux record\(s\)|performance record\(s\)|new shift type\(s\))/g, '<b>$1</b> $2')
+    .replace(/for ([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)/g, 'for <b>$1</b>');
+}
+
+function render() {
+  const rows = getFiltered();
+  renderStats(rows);
+  const tl = document.getElementById('timeline');
+
+  if (!rows.length) {
+    tl.innerHTML = `
+      <div class="empty-state">
+        <i class="fas fa-wind"></i>
+        <div class="t">No activity found</div>
+        <div class="s">Try clearing filters or loading older entries</div>
+      </div>`;
+    return;
+  }
+
+  // Group by day
+  const groups = {};
+  rows.forEach(l => {
+    const k = dayKey(l.created_at);
+    (groups[k] = groups[k] || []).push(l);
+  });
+
+  tl.innerHTML = Object.keys(groups).sort().reverse().map(k => {
+    const dayRows = groups[k];
+    const entries = dayRows.map(l => {
+      const hasDetail = l.old_value || l.new_value;
+      const isOpen = expandedId === l.id;
+      return `
+      <div class="entry ${hasDetail ? 'has-detail' : ''} ${isOpen ? 'open' : ''}" ${hasDetail ? `onclick="toggleDetail('${l.id}')"` : ''}>
+        <div class="act-ico ico-${l.action}"><i class="fas ${ACTION_ICONS[l.action] || 'fa-circle'}"></i></div>
+        <div class="entry-body">
+          <div class="entry-top">
+            <span class="entry-admin">${l.admin_username}</span>
+            <span class="entry-module ${moduleClass(l.module)}">${l.module}</span>
+            <span class="entry-time"><i class="far fa-clock" style="margin-right:4px;"></i>${fmtClock(l.created_at)}</span>
+          </div>
+          <div class="entry-desc">${highlightDesc(l.description)}</div>
+          ${isOpen && hasDetail ? `
+          <div class="entry-detail">
+            <div><div class="d-label">Old value</div><pre>${l.old_value ? JSON.stringify(l.old_value, null, 2) : '—'}</pre></div>
+            <div><div class="d-label">New value</div><pre>${l.new_value ? JSON.stringify(l.new_value, null, 2) : '—'}</pre></div>
+          </div>` : ''}
+        </div>
+        ${hasDetail ? '<div class="entry-chev"><i class="fas fa-chevron-down"></i></div>' : ''}
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="day-group">
+      <div class="day-label">
+        <span class="day-text">${dayTitle(k)}</span>
+        <span class="day-line"></span>
+        <span class="day-count">${dayRows.length} action${dayRows.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${entries}
+    </div>`;
+  }).join('');
+}
+
+function toggleDetail(id) {
+  expandedId = expandedId === id ? null : id;
+  render();
+}
+
+function exportCSV() {
+  const rows = getFiltered();
+  const csv = [
+    ['Time', 'Admin', 'Module', 'Action', 'Table', 'Description'].join(','),
+    ...rows.map(l => [
+      l.created_at,
+      l.admin_username,
+      l.module,
+      l.action,
+      l.target_table || '',
+      '"' + (l.description || '').replace(/"/g, '""') + '"'
+    ].join(','))
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'audit-log.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadData();
+</script>
+</body>
+</html>

@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOS Admin — HR Report</title>
+  <link rel="icon" type="image/png" href="../logo.png">
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+
+    /* ── Range Bar ── */
+    .range-bar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 14px 18px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+    .range-bar label { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .range-bar .form-input { padding: 8px 12px; font-size: 12px; min-width: 140px; }
+    .range-bar .divider-v { width: 1px; height: 30px; background: var(--border); margin: 0 4px; }
+
+    /* ── Tabs ── */
+    .hr-tabs {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .hr-tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 8px 16px; border-radius: 10px; cursor: pointer;
+      border: 1.5px solid var(--border); background: var(--surface2);
+      color: var(--muted); font-size: 12px; font-weight: 600;
+      transition: all 0.2s; user-select: none;
+    }
+    .hr-tab:hover { border-color: var(--gold); color: var(--gold); }
+    .hr-tab.active { border-color: var(--gold); color: var(--gold); background: rgba(59,130,246,0.08); }
+    .hr-tab .tab-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 5px;
+      border-radius: 9px; font-size: 10px; font-weight: 700;
+      background: rgba(59,130,246,0.15); color: var(--gold);
+    }
+
+    /* ── Sections ── */
+    .hr-section { display: none; }
+    .hr-section.active { display: block; }
+
+    /* ── Schedule Matrix ── */
+    .sched-matrix { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .sched-matrix th {
+      padding: 9px 6px; background: var(--surface2);
+      color: var(--muted); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap;
+    }
+    .sched-matrix th.agent-col { text-align: left; min-width: 150px; padding-left: 14px; }
+    .sched-matrix td {
+      padding: 5px 4px; border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border); text-align: center; vertical-align: middle;
+    }
+    .sched-matrix td.agent-col {
+      text-align: left; padding: 7px 12px; font-weight: 700; font-size: 12px;
+      background: var(--surface2); position: sticky; left: 0; z-index: 2;
+      border-right: 2px solid var(--border2);
+    }
+    .sched-matrix tr:last-child td { border-bottom: none; }
+    .day-pill {
+      display: inline-block; padding: 3px 7px; border-radius: 6px;
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+    }
+    .dp-work     { background: rgba(16,185,129,0.15);  color: #10B981; }
+    .dp-off      { background: rgba(107,122,153,0.12); color: var(--muted); }
+    .dp-annual   { background: rgba(139,92,246,0.15);  color: #8B5CF6; }
+    .dp-sick     { background: rgba(239,68,68,0.15);   color: #EF4444; }
+    .dp-casual   { background: rgba(245,158,11,0.15);  color: #F59E0B; }
+    .dp-ph       { background: rgba(59,130,246,0.18);  color: #3B82F6; }
+    .dp-task     { background: rgba(20,184,166,0.15);  color: #14B8A6; }
+
+    /* ── Summary Row ── */
+    .summary-row-agent td { background: var(--surface3) !important; font-size: 11px; }
+
+    /* ── Missing Punch ── */
+    .mp-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+      background: rgba(239,68,68,0.12); color: #EF4444;
+    }
+
+    /* ── OT / PH ── */
+    .ot-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+      background: rgba(59,130,246,0.12); color: #3B82F6;
+    }
+
+    /* ── Export Btn ── */
+    .export-bar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    /* ── KPI strip ── */
+    .hr-kpi-strip {
+      display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .hr-kpi {
+      flex: 1; min-width: 120px;
+      padding: 14px 16px; border-radius: 12px;
+      border: 1px solid var(--border); background: var(--surface2);
+      text-align: center;
+    }
+    .hr-kpi-val { font-size: 24px; font-weight: 800; color: var(--text); }
+    .hr-kpi-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Sticky Scroll ── */
+    .matrix-wrap { overflow-x: auto; overflow-y: auto; max-height: 520px; }
+
+    /* ── Weekend col ── */
+    .weekend-col { background: rgba(239,68,68,0.04); }
+
+    /* ── Excuses type ── */
+    .ex-late  { background: rgba(245,158,11,0.12); color: #F59E0B; padding:3px 9px; border-radius:7px; font-size:11px; font-weight:700; }
+    .ex-early { background: rgba(59,130,246,0.12);  color: #3B82F6; padding:3px 9px; border-radius:7px; font-size:11px; font-weight:700; }
+
+  </style>
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">HR Report</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Period Report
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm" onclick="loadReport()" title="Refresh">
+          <i class="fas fa-sync-alt" id="refresh-icon"></i>
+        </button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE CONTENT -->
+    <div class="page-content">
+
+      <!-- ── RANGE BAR ── -->
+      <div class="range-bar fade-up">
+        <i class="fas fa-calendar-range" style="color:var(--gold);font-size:16px;"></i>
+        <label>From</label>
+        <input type="date" id="range-from" class="form-input" style="width:150px;">
+        <label>To</label>
+        <input type="date" id="range-to" class="form-input" style="width:150px;">
+        <div class="divider-v"></div>
+        <!-- Quick Presets -->
+        <button class="btn btn-ghost btn-sm" onclick="setPreset('thisMonth')">This Month</button>
+        <button class="btn btn-ghost btn-sm" onclick="setPreset('lastMonth')">Last Month</button>
+        <button class="btn btn-ghost btn-sm" onclick="setPreset('thisWeek')">This Week</button>
+        <div class="divider-v"></div>
+        <button class="btn btn-primary" onclick="loadReport()">
+          <i class="fas fa-search"></i> Generate Report
+        </button>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="exportAllXLSX()">
+            <i class="fas fa-file-excel" style="color:#10B981;"></i> Export Report
+          </button>
+        </div>
+      </div>
+
+      <!-- ── KPI STRIP ── -->
+      <div class="hr-kpi-strip fade-up" id="kpi-strip" style="display:none;">
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-work-days">—</div>
+          <div class="hr-kpi-lbl">✅ Work Days</div>
+        </div>
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-off-days">—</div>
+          <div class="hr-kpi-lbl">⏸ Off Days</div>
+        </div>
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-leave-days">—</div>
+          <div class="hr-kpi-lbl">🏖️ Leave Days</div>
+        </div>
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-ph-days">—</div>
+          <div class="hr-kpi-lbl">🔵 Overtime Weekend</div>
+        </div>
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-missing-punch">—</div>
+          <div class="hr-kpi-lbl">❗ Missing Punch</div>
+        </div>
+        <div class="hr-kpi">
+          <div class="hr-kpi-val" id="kpi-excuses">—</div>
+          <div class="hr-kpi-lbl">📋 Excuses</div>
+        </div>
+      </div>
+
+      <!-- ── TABS ── -->
+      <div class="hr-tabs fade-up" id="hr-tabs" style="display:none;">
+        <div class="hr-tab active" onclick="switchTab('schedule')" id="tab-schedule">
+          <i class="fas fa-calendar-alt"></i> Schedule
+          <span class="tab-count" id="cnt-schedule">0</span>
+        </div>
+        <div class="hr-tab" onclick="switchTab('missing')" id="tab-missing">
+          <i class="fas fa-user-clock"></i> Missing Punch
+          <span class="tab-count" id="cnt-missing">0</span>
+        </div>
+        <div class="hr-tab" onclick="switchTab('overtime')" id="tab-overtime">
+          <i class="fas fa-sun"></i> Overtime Weekend
+          <span class="tab-count" id="cnt-overtime">0</span>
+        </div>
+        <div class="hr-tab" onclick="switchTab('excuses')" id="tab-excuses">
+          <i class="fas fa-clock"></i> Excuses
+          <span class="tab-count" id="cnt-excuses">0</span>
+        </div>
+      </div>
+
+      <!-- ── EMPTY STATE ── -->
+      <div id="empty-state" class="section-card fade-up">
+        <div class="empty-state" style="padding:60px;">
+          <span class="empty-icon">📊</span>
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">Select a Date Range</div>
+          <div style="margin-bottom:16px;color:var(--muted);">Choose a start and end date above then click Generate Report</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════
+           SECTION 1 — SCHEDULE
+           ════════════════════════ -->
+      <div class="hr-section active section-card fade-up" id="section-schedule" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-calendar-alt" style="color:var(--gold)"></i>
+            Schedule — <span id="sched-period-label">—</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="exportScheduleCSV()">
+            <i class="fas fa-download"></i> Export
+          </button>
+        </div>
+        <div class="section-body no-pad">
+          <div class="matrix-wrap">
+            <div id="schedule-matrix"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════
+           SECTION 2 — MISSING PUNCH
+           ════════════════════════ -->
+      <div class="hr-section section-card fade-up" id="section-missing" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-user-clock" style="color:#EF4444"></i>
+            Missing Punch — <span id="missing-period-label">—</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="missing-agent-filter" class="form-input" style="width:180px;font-size:12px;" onchange="renderMissingTable()">
+              <option value="">All Agents</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="exportMissingCSV()">
+              <i class="fas fa-download"></i> Export
+            </button>
+          </div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Scheduled Shift</th>
+                  <th>Type</th>
+                  <th>Notes</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="missing-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════
+           SECTION 3 — OVERTIME WEEKEND
+           ════════════════════════ -->
+      <div class="hr-section section-card fade-up" id="section-overtime" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-sun" style="color:#3B82F6"></i>
+            Overtime Weekend Days — <span id="ot-period-label">—</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="ot-agent-filter" class="form-input" style="width:180px;font-size:12px;" onchange="renderOTTable()">
+              <option value="">All Agents</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="openPHModal()">
+              <i class="fas fa-plus"></i> Add OT Weekend
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="exportOTCSV()">
+              <i class="fas fa-download"></i> Export
+            </button>
+          </div>
+        </div>
+        <!-- OT Summary per agent -->
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+          <div id="ot-agent-summary" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Type</th>
+                  <th>Shift</th>
+                  <th>Hours</th>
+                  <th style="text-align:center;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ot-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════
+           SECTION 4 — EXCUSES
+           ════════════════════════ -->
+      <div class="hr-section section-card fade-up" id="section-excuses" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-clock" style="color:var(--gold)"></i>
+            Excuses — <span id="ex-period-label">—</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="ex-status-filter" class="form-input" style="width:140px;font-size:12px;" onchange="renderExcusesTable()">
+              <option value="">All Status</option>
+              <option value="Approved">Approved</option>
+              <option value="Pending">Pending</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <select id="ex-agent-filter" class="form-input" style="width:180px;font-size:12px;" onchange="renderExcusesTable()">
+              <option value="">All Agents</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="exportExcusesCSV()">
+              <i class="fas fa-download"></i> Export
+            </button>
+          </div>
+        </div>
+        <!-- Excuses summary per agent -->
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+          <div id="ex-agent-summary" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Type</th>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Status</th>
+                  <th>Note</th>
+                  <th>Submitted</th>
+                </tr>
+              </thead>
+              <tbody id="excuses-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end page-content -->
+  </div><!-- end main-content -->
+</div><!-- end admin-layout -->
+
+<!-- ── CONFIRM MODAL (matches rest of project) ── -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<div id="ph-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:18px;padding:0;width:520px;max-width:94vw;border:1px solid var(--border);box-shadow:0 24px 70px rgba(0,0,0,0.4);overflow:hidden;">
+
+    <!-- Modal Header -->
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:34px;height:34px;border-radius:10px;background:rgba(59,130,246,0.12);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-calendar-star" style="color:#3B82F6;font-size:14px;"></i>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:800;color:var(--text);">Mark Overtime Weekend Day</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;">Pick the day → see who worked → save overtime</div>
+        </div>
+      </div>
+      <button onclick="closePHModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:7px;">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Step 1: Pick Date -->
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:flex-end;gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:11px;color:var(--muted);font-weight:700;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.6px;">
+            <i class="fas fa-calendar-day" style="margin-right:4px;"></i>Public Holiday / OT Date
+          </label>
+          <input type="date" id="ph-date" class="form-input" style="width:100%;">
+        </div>
+        <button class="btn btn-primary" onclick="loadPHAgents()" id="ph-load-btn" style="white-space:nowrap;height:38px;">
+          <i class="fas fa-search"></i> Load Agents
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Agents list (dynamic) -->
+    <div id="ph-agents-wrap" style="max-height:320px;overflow-y:auto;">
+      <div style="padding:36px;text-align:center;color:var(--muted);font-size:13px;">
+        <i class="fas fa-arrow-up" style="display:block;margin-bottom:8px;font-size:20px;opacity:0.4;"></i>
+        Pick a date above and click "Load Agents"
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+      <span id="ph-selected-count" style="font-size:12px;color:var(--muted);margin-right:auto;"></span>
+      <button class="btn btn-ghost" onclick="closePHModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePHEntries()" id="ph-save-btn" style="display:none;">
+        <i class="fas fa-save"></i> Save Overtime
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+
+// ── INIT ──
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+// Set default range = this month
+(function setDefaultRange() {
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, '0');
+  const first = `${y}-${m}-01`;
+  const last  = new Date(y, t.getMonth() + 1, 0).toISOString().split('T')[0];
+  document.getElementById('range-from').value = first;
+  document.getElementById('range-to').value   = last;
+})();
+
+// ── DATA STORES ──
+let allAgents     = [];
+let allShiftTypes = [];
+let scheduleRows  = [];   // raw schedule rows
+let missingRows   = [];   // adherence_deviations rows
+let otRows        = [];   // Overtime Weekend rows (from schedule)
+let excuseRows    = [];   // excuse rows
+
+// ── TAB MANAGEMENT ──
+let activeTab = 'schedule';
+function switchTab(tab) {
+  activeTab = tab;
+  ['schedule','missing','overtime','excuses'].forEach(t => {
+    document.getElementById('tab-' + t)?.classList.toggle('active', t === tab);
+    const sec = document.getElementById('section-' + t);
+    if (sec) sec.style.display = (t === tab) ? 'block' : 'none';
+  });
+}
+
+// ── PRESETS ──
+function setPreset(p) {
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = t.getMonth();
+  let from, to;
+  if (p === 'thisMonth') {
+    from = new Date(y, m, 1).toISOString().split('T')[0];
+    to   = new Date(y, m + 1, 0).toISOString().split('T')[0];
+  } else if (p === 'lastMonth') {
+    from = new Date(y, m - 1, 1).toISOString().split('T')[0];
+    to   = new Date(y, m, 0).toISOString().split('T')[0];
+  } else if (p === 'thisWeek') {
+    from = getWeekStart();
+    to   = getWeekEnd();
+  }
+  document.getElementById('range-from').value = from;
+  document.getElementById('range-to').value   = to;
+  loadReport();
+}
+
+// ── MAIN LOAD ──
+async function loadReport() {
+  const from = document.getElementById('range-from').value;
+  const to   = document.getElementById('range-to').value;
+  if (!from || !to) { showToast('Please select a date range', 'error'); return; }
+  if (from > to)    { showToast('Start date must be before end date', 'error'); return; }
+
+  const icon = document.getElementById('refresh-icon');
+  icon.style.animation = 'spin 0.8s linear infinite';
+
+  // Show tabs, hide empty state
+  document.getElementById('empty-state').style.display   = 'none';
+  document.getElementById('kpi-strip').style.display     = 'flex';
+  document.getElementById('hr-tabs').style.display       = 'flex';
+
+  try {
+    await Promise.all([
+      loadAgentsAndShifts(),
+      loadScheduleData(from, to),
+      loadMissingPunch(from, to),
+      loadExcuses(from, to),
+    ]);
+
+    // OT Weekend = schedule rows where is_ot = true
+    otRows = scheduleRows.filter(r => r.is_ot);
+
+    updateKPIs();
+    buildAgentFilters();
+    renderScheduleMatrix(from, to);
+    renderMissingTable();
+    renderOTTable();
+    renderExcusesTable();
+
+    // Show active section
+    ['schedule','missing','overtime','excuses'].forEach(t => {
+      const sec = document.getElementById('section-' + t);
+      if (sec) sec.style.display = (t === activeTab) ? 'block' : 'none';
+    });
+
+    const label = `${formatDateLabel(from)} → ${formatDateLabel(to)}`;
+    document.getElementById('sched-period-label').innerText   = label;
+    document.getElementById('missing-period-label').innerText = label;
+    document.getElementById('ot-period-label').innerText      = label;
+    document.getElementById('ex-period-label').innerText      = label;
+
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    icon.style.animation = '';
+  }
+}
+
+async function loadAgentsAndShifts() {
+  if (allAgents.length) return; // cached
+  const [{ data: agents }, { data: shifts }] = await Promise.all([
+    db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+    db.from('shift_types').select('*').eq('is_active', true),
+  ]);
+  allAgents     = agents  || [];
+  allShiftTypes = shifts  || [];
+}
+
+async function loadScheduleData(from, to) {
+  const { data, error } = await db.from('schedule')
+    .select('agent_id, shift_date, day_type, is_ot, shift_type_id, agents(formal_name), shift_types(name,start_time,end_time)')
+    .gte('shift_date', from)
+    .lte('shift_date', to)
+    .order('shift_date');
+  if (error) throw error;
+  scheduleRows = data || [];
+}
+
+async function loadMissingPunch(from, to) {
+  try {
+    const { data, error } = await db.from('requests')
+      .select('*')
+      .eq('type', 'Missing Punch')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    // details is stored as JSON string — parse it, then filter by date range
+    missingRows = (data || []).map(r => ({
+      ...r,
+      _details: typeof r.details === 'string' ? JSON.parse(r.details) : (r.details || {})
+    })).filter(r => {
+      const d = r._details?.date || '';
+      return d >= from && d <= to;
+    });
+  } catch(e) {
+    missingRows = [];
+  }
+}
+
+async function loadExcuses(from, to) {
+  const { data, error } = await db.from('excuses')
+    .select('*')
+    .gte('excuse_date', from)
+    .lte('excuse_date', to)
+    .order('excuse_date');
+  if (error) throw error;
+  excuseRows = data || [];
+}
+
+// ── KPIs ──
+function updateKPIs() {
+  const work    = scheduleRows.filter(r => r.day_type === 'Work').length;
+  const off     = scheduleRows.filter(r => r.day_type === 'Off').length;
+  // PH (Public Holiday) is a leave-type day, NOT overtime
+  const leave   = scheduleRows.filter(r => ['Annual','Sick','Casual','PH'].includes(r.day_type)).length;
+  // Overtime Weekend = Work shifts flagged is_ot (the actual worked shifts)
+  const ph      = otRows.length;
+
+  document.getElementById('kpi-work-days').innerText   = work;
+  document.getElementById('kpi-off-days').innerText    = off;
+  document.getElementById('kpi-leave-days').innerText  = leave;
+  document.getElementById('kpi-ph-days').innerText     = ph;
+  document.getElementById('kpi-missing-punch').innerText = missingRows.length;
+  document.getElementById('kpi-excuses').innerText     = excuseRows.length;
+
+  document.getElementById('cnt-schedule').innerText  = scheduleRows.length;
+  document.getElementById('cnt-missing').innerText   = missingRows.length;
+  document.getElementById('cnt-overtime').innerText  = ph;
+  document.getElementById('cnt-excuses').innerText   = excuseRows.length;
+}
+
+// ── BUILD AGENT FILTERS ──
+function buildAgentFilters() {
+  const opts = '<option value="">All Agents</option>' +
+    allAgents.map(a => `<option value="${a.id}">${a.formal_name}</option>`).join('');
+  ['ot-agent-filter','ex-agent-filter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = opts;
+  });
+  // Missing punch filter: build from actual missingRows (requests table uses agent_name)
+  const mpSel = document.getElementById('missing-agent-filter');
+  if (mpSel) {
+    const seen = {};
+    const mpOpts = missingRows
+      .filter(r => { if (seen[r.agent_name]) return false; seen[r.agent_name] = 1; return true; })
+      .map(r => `<option value="${r.agent_id || r.agent_name}">${r.agent_name}</option>`)
+      .join('');
+    mpSel.innerHTML = '<option value="">All Agents</option>' + mpOpts;
+  }
+}
+
+// ═══════════════════════════════════════
+//  SECTION 1 — SCHEDULE MATRIX
+// ═══════════════════════════════════════
+function renderScheduleMatrix(from, to) {
+  const dates   = getDatesInRange(from, to);
+  const matWrap = document.getElementById('schedule-matrix');
+
+  if (!dates.length || !allAgents.length) {
+    matWrap.innerHTML = '<div class="empty-state p-20">No data</div>';
+    return;
+  }
+
+  // Build lookup: agentId_date → entry
+  const lookup = {};
+  scheduleRows.forEach(r => { lookup[`${r.agent_id}_${r.shift_date}`] = r; });
+
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let html = `<table class="sched-matrix"><thead><tr>
+    <th class="agent-col">Agent</th>`;
+
+  dates.forEach(d => {
+    const isWeekend = d.dayOfWeek === 5 || d.dayOfWeek === 6;
+    html += `<th class="${isWeekend ? 'weekend-col' : ''}">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+        <span style="font-size:9px;font-weight:800;">${DAYS[d.dayOfWeek]}</span>
+        <span style="font-size:10px;color:var(--text);">${d.display}</span>
+      </div>
+    </th>`;
+  });
+
+  // Summary cols
+  html += `<th style="min-width:50px;">Work</th>
+           <th style="min-width:50px;">Off</th>
+           <th style="min-width:50px;">Leave</th>
+           <th style="min-width:50px;">OT</th>
+           </tr></thead><tbody>`;
+
+  allAgents.forEach(agent => {
+    html += `<tr><td class="agent-col">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;flex-shrink:0;">${initials(agent.formal_name)}</div>
+        <span>${agent.formal_name}</span>
+      </div>
+    </td>`;
+
+    let workCnt = 0, offCnt = 0, leaveCnt = 0, phCnt = 0;
+
+    dates.forEach(d => {
+      const entry = lookup[`${agent.id}_${d.iso}`];
+      const isWeekend = d.dayOfWeek === 5 || d.dayOfWeek === 6;
+
+      if (!entry) {
+        html += `<td class="${isWeekend ? 'weekend-col' : ''}"><span class="day-pill dp-off">—</span></td>`;
+        offCnt++;
+        return;
+      }
+
+      const dt = entry.day_type;
+      if (dt === 'Work') {
+        workCnt++;
+        if (entry.is_ot) phCnt++;           // OT = worked shift flagged is_ot
+      }
+      else if (dt === 'Off') offCnt++;
+      else if (['Annual','Sick','Casual','PH'].includes(dt)) leaveCnt++;  // PH = leave
+
+      let pill = '', cls = '';
+      if (dt === 'Work') {
+        const st = entry.shift_types;
+        pill = st ? `${st.start_time.slice(0,5)}-${st.end_time.slice(0,5)}` : 'Work';
+        cls  = entry.is_ot ? 'dp-ph' : 'dp-work';   // highlight OT shifts
+        if (entry.is_ot) pill += ' ⭐';
+      } else if (dt === 'Off')    { pill = 'Off';    cls = 'dp-off'; }
+      else if (dt === 'Annual')   { pill = 'Annual'; cls = 'dp-annual'; }
+      else if (dt === 'Sick')     { pill = 'Sick';   cls = 'dp-sick'; }
+      else if (dt === 'Casual')   { pill = 'Casual'; cls = 'dp-casual'; }
+      else if (dt === 'PH')       { pill = 'PH';     cls = 'dp-ph'; }
+      else if (dt === 'Task')     { pill = 'Task';   cls = 'dp-task'; }
+      else { pill = dt; cls = 'dp-off'; }
+
+      html += `<td class="${isWeekend ? 'weekend-col' : ''}"><span class="day-pill ${cls}">${pill}</span></td>`;
+    });
+
+    html += `
+      <td style="text-align:center;font-weight:800;color:#10B981;">${workCnt}</td>
+      <td style="text-align:center;font-weight:700;color:var(--muted);">${offCnt}</td>
+      <td style="text-align:center;font-weight:700;color:#8B5CF6;">${leaveCnt}</td>
+      <td style="text-align:center;font-weight:700;color:#3B82F6;">${phCnt}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  matWrap.innerHTML = html;
+}
+
+// ═══════════════════════════════════════
+//  SECTION 2 — MISSING PUNCH
+// ═══════════════════════════════════════
+function renderMissingTable() {
+  const tbody      = document.getElementById('missing-tbody');
+  const agentFlt   = document.getElementById('missing-agent-filter')?.value || '';
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let data = missingRows;
+  if (agentFlt) data = data.filter(r => (r.agent_id === agentFlt) || (r.agent_name === agentFlt));
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state"><span class="empty-icon">✅</span>No missing punch records found for this period</div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => {
+    const dateStr = r._details?.date || '';
+    const d = new Date(dateStr + 'T00:00:00');
+    const dayName = DAYS[d.getDay()];
+    const shiftTime = r._details?.shift_time || r._details?.shift || '—';
+    const notes     = r._details?.notes || r._details?.reason || '—';
+
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(r.agent_name||'?')}</div>
+        <span style="font-weight:700;">${r.agent_name || '—'}</span>
+      </div></td>
+      <td style="font-weight:700;color:var(--gold);">${formatDateLabel(dateStr)}</td>
+      <td style="color:var(--muted);">${dayName}</td>
+      <td style="font-size:12px;">${shiftTime}</td>
+      <td><span class="mp-badge"><i class="fas fa-exclamation-triangle" style="font-size:10px;"></i> Missing Punch</span></td>
+      <td style="font-size:11px;color:var(--muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${notes}</td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+//  SECTION 3 — OVERTIME WEEKEND
+// ═══════════════════════════════════════
+function renderOTTable() {
+  const tbody    = document.getElementById('ot-tbody');
+  const agentFlt = document.getElementById('ot-agent-filter')?.value || '';
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let data = otRows;
+  if (agentFlt) data = data.filter(r => r.agent_id === agentFlt);
+
+  // Agent summary pills
+  const summaryEl = document.getElementById('ot-agent-summary');
+  const agentCounts = {};
+  otRows.forEach(r => {
+    const name = r.agents?.formal_name || r.agent_name || r.agent_id;
+    agentCounts[name] = (agentCounts[name] || 0) + 1;
+  });
+  summaryEl.innerHTML = Object.entries(agentCounts).map(([name, cnt]) =>
+    `<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;font-size:12px;font-weight:700;color:#3B82F6;">
+      <i class="fas fa-user" style="font-size:10px;"></i>${name}
+      <span style="background:rgba(59,130,246,0.2);padding:1px 7px;border-radius:8px;">${cnt}</span>
+    </div>`
+  ).join('') || '<span style="font-size:12px;color:var(--muted);">No Overtime Weekend records</span>';
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state"><span class="empty-icon">🌙</span>No Overtime Weekend days found for this period</div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => {
+    const d = new Date(r.shift_date + 'T00:00:00');
+    const dayName = DAYS[d.getDay()];
+    const st   = r.shift_types;
+    const agentName = r.agents?.formal_name || r.agent_id;
+    let hours = '—';
+    if (st?.start_time && st?.end_time) {
+      const start = timeToMins(st.start_time);
+      const end   = timeToMins(st.end_time);
+      let diff = end - start;
+      if (diff < 0) diff += 24 * 60;
+      hours = (diff / 60).toFixed(1) + ' hrs';
+    }
+    const shiftLabel = st ? `${st.start_time.slice(0,5)} - ${st.end_time.slice(0,5)}` : '—';
+
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(agentName)}</div>
+        <span style="font-weight:700;">${agentName}</span>
+      </div></td>
+      <td style="font-weight:700;color:var(--gold);">${formatDateLabel(r.shift_date)}</td>
+      <td style="color:var(--muted);">${dayName}</td>
+      <td><span class="ot-badge"><i class="fas fa-star" style="font-size:10px;"></i> OT Weekend</span></td>
+      <td style="font-size:12px;">${shiftLabel}</td>
+      <td style="text-align:center;"><span class="badge badge-info">${hours}</span></td>
+      <td style="text-align:center;">
+        <button onclick="deletePHEntry('${r.agent_id}','${r.shift_date}')"
+          style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);color:#EF4444;
+                 border-radius:7px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:600;
+                 transition:background 0.15s;" title="Remove OT Weekend entry">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+//  SECTION 4 — EXCUSES
+// ═══════════════════════════════════════
+function renderExcusesTable() {
+  const tbody      = document.getElementById('excuses-tbody');
+  const agentFlt   = document.getElementById('ex-agent-filter')?.value || '';
+  const statusFlt  = document.getElementById('ex-status-filter')?.value || '';
+
+  let data = excuseRows;
+  if (agentFlt)  data = data.filter(r => r.agent_id === agentFlt);
+  if (statusFlt) data = data.filter(r => r.status === statusFlt);
+
+  // Agent summary
+  const summaryEl = document.getElementById('ex-agent-summary');
+  const agentEx = {};
+  excuseRows.filter(r => r.status === 'Approved').forEach(r => {
+    agentEx[r.agent_name] = (agentEx[r.agent_name] || 0) + 1;
+  });
+  summaryEl.innerHTML = Object.entries(agentEx).map(([name, cnt]) =>
+    `<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(212,175,55,0.06);border:1px solid rgba(212,175,55,0.2);border-radius:10px;font-size:12px;font-weight:700;color:var(--gold);">
+      <i class="fas fa-user" style="font-size:10px;"></i>${name}
+      <span style="background:rgba(212,175,55,0.15);padding:1px 7px;border-radius:8px;">${cnt} used</span>
+    </div>`
+  ).join('') || '<span style="font-size:12px;color:var(--muted);">No approved excuses</span>';
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state"><span class="empty-icon">📭</span>No excuses found for this period</div>
+    </td></tr>`;
+    return;
+  }
+
+  const typeClass = t => t === 'Arrive Late' ? 'ex-late' : 'ex-early';
+
+  tbody.innerHTML = data.map(r => {
+    const dt = new Date(r.created_at);
+    const submitted = dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) + ' ' +
+                      dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div class="agent-avatar" style="width:26px;height:26px;font-size:9px;">${initials(r.agent_name||'?')}</div>
+        <span style="font-weight:700;">${r.agent_name || '—'}</span>
+      </div></td>
+      <td><span class="${typeClass(r.excuse_type)}">${r.excuse_type}</span></td>
+      <td style="font-weight:700;color:var(--gold);">${formatDateLabel(r.excuse_date)}</td>
+      <td style="font-size:12px;color:var(--muted);">${r.shift_time || '—'}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td style="font-size:11px;color:var(--muted);">${r.notes || r.reject_reason || '—'}</td>
+      <td style="font-size:11px;color:var(--muted);">${submitted}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+//  EXPORT FUNCTIONS
+// ═══════════════════════════════════════
+function downloadCSV(filename, headers, rows) {
+  const bom  = '\uFEFF';
+  const csv  = bom + [headers, ...rows].map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Exported: ' + filename, 'success');
+}
+
+// ═══════════════════════════════════════
+//  EXPORT — COMBINED PROFESSIONAL XLSX
+// ═══════════════════════════════════════
+function exportAllXLSX() {
+  const from = document.getElementById('range-from').value;
+  const to   = document.getElementById('range-to').value;
+  if (!from || !to || !scheduleRows.length) { showToast('Generate report first', 'warning'); return; }
+
+  const wb   = XLSX.utils.book_new();
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const period = `${formatDateLabel(from)} → ${formatDateLabel(to)}`;
+
+  // ── Helper: add styled header rows ──
+  function makeSheet(title, headers, rows) {
+    // Title row + blank + headers + data
+    const aoa = [
+      [title],
+      [`Period: ${period}`],
+      [],
+      headers,
+      ...rows
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Column widths
+    const maxW = headers.map((h, ci) => {
+      const vals = [String(h), ...rows.map(r => String(r[ci] ?? ''))];
+      return { wch: Math.min(40, Math.max(10, ...vals.map(v => v.length + 2))) };
+    });
+    ws['!cols'] = maxW;
+
+    // Merge title across all columns
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
+    ];
+    return ws;
+  }
+
+  // ── Sheet 1: Schedule ──
+  const dates  = getDatesInRange(from, to);
+  const lookup = {};
+  scheduleRows.forEach(r => { lookup[`${r.agent_id}_${r.shift_date}`] = r; });
+
+  const schedHeaders = ['Agent', ...dates.map(d => {
+    const dObj = new Date(d.iso + 'T00:00:00');
+    return `${DAYS[dObj.getDay()]} ${d.display}`;
+  }), 'Work', 'Off', 'Leave', 'OT Weekend'];
+
+  const schedRows = allAgents.map(agent => {
+    let work = 0, off = 0, leave = 0, ph = 0;
+    const cells = dates.map(d => {
+      const e = lookup[`${agent.id}_${d.iso}`];
+      if (!e)                                                        { off++;   return 'Off';         }
+      if (e.day_type === 'Work') {
+        work++;
+        const st  = e.shift_types;
+        const lbl = st ? `${st.start_time.slice(0,5)}-${st.end_time.slice(0,5)}` : 'Work';
+        if (e.is_ot) { ph++; return lbl + ' (OT)'; }   // OT Weekend = worked shift flagged is_ot
+        return lbl;
+      }
+      if (['Annual','Sick','Casual','PH'].includes(e.day_type))      { leave++; return e.day_type;    }  // PH = Public Holiday (leave)
+      off++; return e.day_type || 'Off';
+    });
+    return [agent.formal_name, ...cells, work, off, leave, ph];
+  });
+  XLSX.utils.book_append_sheet(wb, makeSheet('📅 Schedule', schedHeaders, schedRows), 'Schedule');
+
+  // ── Sheet 2: Missing Punch ──
+  const mpHeaders = ['Agent', 'Date', 'Day', 'Scheduled Shift', 'Notes', 'Status'];
+  const mpRows = missingRows.map(r => {
+    const dateStr = r._details?.date || '';
+    const dObj    = new Date(dateStr + 'T00:00:00');
+    return [
+      r.agent_name || '—',
+      formatDateLabel(dateStr),
+      DAYS[dObj.getDay()] || '—',
+      r._details?.shift_time || r._details?.shift || '—',
+      r._details?.notes || r._details?.reason || '—',
+      r.status || '—',
+    ];
+  });
+  XLSX.utils.book_append_sheet(wb, makeSheet('❗ Missing Punch', mpHeaders, mpRows), 'Missing Punch');
+
+  // ── Sheet 3: OT Weekend ──
+  const otHeaders = ['Agent', 'Date', 'Day', 'Shift', 'Hours'];
+  const otExportRows = otRows.map(r => {
+    const dObj = new Date(r.shift_date + 'T00:00:00');
+    const st   = r.shift_types;
+    let hours  = '—';
+    if (st?.start_time && st?.end_time) {
+      let diff = timeToMins(st.end_time) - timeToMins(st.start_time);
+      if (diff < 0) diff += 24 * 60;
+      hours = (diff / 60).toFixed(1) + ' hrs';
+    }
+    return [
+      r.agents?.formal_name || r.agent_id,
+      formatDateLabel(r.shift_date),
+      DAYS[dObj.getDay()],
+      st ? `${st.start_time.slice(0,5)} - ${st.end_time.slice(0,5)}` : '—',
+      hours,
+    ];
+  });
+  XLSX.utils.book_append_sheet(wb, makeSheet('⭐ OT Weekend', otHeaders, otExportRows), 'OT Weekend');
+
+  // ── Sheet 4: Excuses ──
+  const exHeaders = ['Agent', 'Type', 'Date', 'Scheduled Shift', 'Status', 'Notes', 'Submitted'];
+  const exRows = excuseRows.map(r => {
+    const dt = new Date(r.created_at);
+    const submitted = isNaN(dt) ? '—'
+      : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
+        dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return [
+      r.agent_name  || '—',
+      r.excuse_type || '—',
+      formatDateLabel(r.excuse_date),
+      r.shift_time  || '—',
+      r.status      || '—',
+      r.notes || r.reject_reason || '—',
+      submitted,
+    ];
+  });
+  XLSX.utils.book_append_sheet(wb, makeSheet('📋 Excuses', exHeaders, exRows), 'Excuses');
+
+  // ── Download ──
+  const filename = `HR_Report_${from}_${to}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast(`✅ Exported: ${filename}`, 'success');
+}
+
+// Keep individual section exports pointing to the combined one
+function exportScheduleCSV() { exportAllXLSX(); }
+function exportMissingCSV()  { exportAllXLSX(); }
+function exportOTCSV()       { exportAllXLSX(); }
+function exportExcusesCSV()  { exportAllXLSX(); }
+function exportAllCSV()      { exportAllXLSX(); }
+
+
+
+let phLoadedAgents = []; // agents loaded for the selected date
+
+async function openPHModal() {
+  await loadAgentsAndShifts();
+  phLoadedAgents = [];
+  document.getElementById('ph-date').value = '';
+  document.getElementById('ph-agents-wrap').innerHTML = `
+    <div style="padding:36px;text-align:center;color:var(--muted);font-size:13px;">
+      <i class="fas fa-arrow-up" style="display:block;margin-bottom:8px;font-size:20px;opacity:0.4;"></i>
+      Pick a date above and click "Load Agents"
+    </div>`;
+  document.getElementById('ph-save-btn').style.display = 'none';
+  document.getElementById('ph-selected-count').innerText = '';
+  document.getElementById('ph-modal').style.display = 'flex';
+}
+
+function closePHModal() {
+  document.getElementById('ph-modal').style.display = 'none';
+}
+
+async function loadPHAgents() {
+  const date = document.getElementById('ph-date').value;
+  if (!date) { showToast('Please pick a date first', 'error'); return; }
+
+  const btn = document.getElementById('ph-load-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
+
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const d = new Date(date + 'T00:00:00');
+  const dayName = DAYS[d.getDay()];
+  const isWeekend = d.getDay() === 5 || d.getDay() === 6;
+
+  // READ schedule with is_ot flag
+  const { data, error } = await db.from('schedule')
+    .select('agent_id, day_type, is_ot, shift_type_id, agents(formal_name), shift_types(name,start_time,end_time)')
+    .eq('shift_date', date);
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-search"></i> Load Agents';
+
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+
+  phLoadedAgents = data || [];
+
+  const wrap = document.getElementById('ph-agents-wrap');
+
+  if (!phLoadedAgents.length) {
+    wrap.innerHTML = `
+      <div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">
+        <i class="fas fa-calendar-times" style="display:block;margin-bottom:8px;font-size:22px;opacity:0.4;"></i>
+        No schedule entries found for <strong>${formatDateLabel(date)}</strong>
+      </div>`;
+    document.getElementById('ph-save-btn').style.display = 'none';
+    return;
+  }
+
+  const alreadyPH = phLoadedAgents.filter(r => r.is_ot);
+  const worked    = phLoadedAgents.filter(r => r.day_type === 'Work' && !r.is_ot);
+  const other     = phLoadedAgents.filter(r => r.day_type !== 'Work' && !r.is_ot);
+
+  let html = `
+    <div style="padding:14px 24px 8px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;font-weight:700;color:var(--text);">
+        <i class="fas fa-calendar-day" style="color:#3B82F6;margin-right:5px;"></i>
+        ${formatDateLabel(date)} — ${dayName}
+        ${isWeekend ? '<span style="background:rgba(239,68,68,0.1);color:#EF4444;padding:2px 8px;border-radius:6px;font-size:10px;margin-left:6px;">Weekend</span>' : ''}
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <button onclick="phSelectAll(true)" style="background:none;border:none;cursor:pointer;font-size:11px;color:#3B82F6;font-weight:600;">Select All</button>
+        <span style="color:var(--border);">|</span>
+        <button onclick="phSelectAll(false)" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted);font-weight:600;">Deselect All</button>
+      </div>
+    </div>`;
+
+  if (worked.length) {
+    html += `<div style="padding:8px 24px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;">
+      ✅ Worked this day (${worked.length})
+    </div>`;
+    worked.forEach(r => {
+      const name = r.agents?.formal_name || r.agent_id;
+      const st = r.shift_types;
+      const shiftLabel = st ? `${st.start_time.slice(0,5)} - ${st.end_time.slice(0,5)}` : '—';
+      html += `
+        <label style="display:flex;align-items:center;gap:12px;padding:10px 24px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+          <input type="checkbox" class="ph-agent-check" value="${r.agent_id}" data-shift="${r.shift_type_id || ''}" checked
+            style="width:16px;height:16px;accent-color:#3B82F6;cursor:pointer;" onchange="phUpdateCount()">
+          <div class="agent-avatar" style="width:28px;height:28px;font-size:10px;flex-shrink:0;">${initials(name)}</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${name}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;"><i class="fas fa-clock" style="font-size:9px;"></i> ${shiftLabel}</div>
+          </div>
+          <span style="background:rgba(16,185,129,0.1);color:#10B981;padding:3px 9px;border-radius:7px;font-size:10px;font-weight:700;">Work</span>
+        </label>`;
+    });
+  }
+
+  if (alreadyPH.length) {
+    html += `<div style="padding:8px 24px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;">
+      🔵 Already marked as OT Weekend (${alreadyPH.length})
+    </div>`;
+    alreadyPH.forEach(r => {
+      const name = r.agents?.formal_name || r.agent_id;
+      html += `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);opacity:0.65;">
+          <div style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;">
+            <i class="fas fa-check-circle" style="color:#3B82F6;font-size:14px;"></i>
+          </div>
+          <div class="agent-avatar" style="width:28px;height:28px;font-size:10px;flex-shrink:0;">${initials(name)}</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${name}</div>
+          </div>
+          <span style="background:rgba(59,130,246,0.1);color:#3B82F6;padding:3px 9px;border-radius:7px;font-size:10px;font-weight:700;">Already OT Weekend</span>
+          <button onclick="deletePHEntry('${r.agent_id}','${date}')"
+            style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);color:#EF4444;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:11px;">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </div>`;
+    });
+  }
+
+  if (other.length) {
+    html += `<div style="padding:8px 24px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;">
+      Other (${other.length})
+    </div>`;
+    other.forEach(r => {
+      const name = r.agents?.formal_name || r.agent_id;
+      html += `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);opacity:0.5;">
+          <div style="width:16px;"></div>
+          <div class="agent-avatar" style="width:28px;height:28px;font-size:10px;flex-shrink:0;">${initials(name)}</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${name}</div>
+          </div>
+          <span style="background:var(--surface2);color:var(--muted);padding:3px 9px;border-radius:7px;font-size:10px;font-weight:700;">${r.day_type}</span>
+        </div>`;
+    });
+  }
+
+  wrap.innerHTML = html;
+  document.getElementById('ph-save-btn').style.display = worked.length ? '' : 'none';
+  phUpdateCount();
+}
+
+function phSelectAll(val) {
+  document.querySelectorAll('.ph-agent-check').forEach(cb => cb.checked = val);
+  phUpdateCount();
+}
+
+function phUpdateCount() {
+  const total    = document.querySelectorAll('.ph-agent-check').length;
+  const selected = document.querySelectorAll('.ph-agent-check:checked').length;
+  document.getElementById('ph-selected-count').innerText =
+    selected > 0 ? `${selected} of ${total} agents selected` : '';
+  document.getElementById('ph-save-btn').style.display =
+    (total > 0 && selected > 0) ? '' : 'none';
+}
+
+async function savePHEntries() {
+  const date    = document.getElementById('ph-date').value;
+  const checked = [...document.querySelectorAll('.ph-agent-check:checked')];
+  if (!checked.length) { showToast('Select at least one agent', 'error'); return; }
+
+  const btn = document.getElementById('ph-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+  const updates = checked.map(cb =>
+    db.from('schedule').update({ is_ot: true }).eq('agent_id', cb.value).eq('shift_date', date)
+  );
+  const results = await Promise.all(updates);
+  const err = results.find(r => r.error);
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-save"></i> Save Overtime';
+
+  if (err) { showToast('Error: ' + err.error.message, 'error'); return; }
+
+  showToast(`✅ ${checked.length} agent(s) marked as OT Weekend on ${formatDateLabel(date)}`, 'success');
+  closePHModal();
+  await _refreshPHData();
+}
+
+async function deletePHEntry(agentId, shiftDate) {
+  openModal(
+    'Remove OT Weekend Entry',
+    `Remove OT Weekend entry for ${formatDateLabel(shiftDate)}?`,
+    async () => {
+      const { error } = await db.from('schedule')
+        .update({ is_ot: false })
+        .eq('agent_id', agentId)
+        .eq('shift_date', shiftDate);
+      if (error) { showToast('Error: ' + error.message, 'error'); return; }
+      showToast('OT Weekend entry removed', 'success');
+      await _refreshPHData();
+    }
+  );
+}
+
+async function _refreshPHData() {
+  const from = document.getElementById('range-from').value;
+  const to   = document.getElementById('range-to').value;
+  if (!from || !to) return;
+  await loadScheduleData(from, to);
+  otRows = scheduleRows.filter(r => r.is_ot);
+  updateKPIs();
+  renderOTTable();
+  renderScheduleMatrix(from, to);
+}
+
+
+
+function getDatesInRange(from, to) {
+  const dates = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const iso = cur.toISOString().split('T')[0];
+    dates.push({
+      iso,
+      display: String(cur.getDate()).padStart(2,'0') + '/' + String(cur.getMonth()+1).padStart(2,'0'),
+      dayOfWeek: cur.getDay(),
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function formatDateLabel(d) {
+  if (!d) return '—';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function timeToMins(t) {
+  if (!t) return 0;
+  const p = t.substring(0,5).split(':');
+  return (+p[0]) * 60 + (+p[1]);
+}
+
+</script>
+</body>
+</html>

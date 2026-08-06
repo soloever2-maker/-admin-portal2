@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin Portal — Technical Documentation</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--gold:#D4AF37;--gold2:#F4D03F;--dark:#080e1a;--dark2:#0f1825;--dark3:#1a2535;--dark4:#243042;--border:rgba(212,175,55,0.15);--text:#dce6f0;--muted:#64748b;--green:#10b981;--red:#ef4444;--blue:#3b82f6;--purple:#8b5cf6;--orange:#f59e0b;--teal:#14b8a6;}
+*{box-sizing:border-box;margin:0;padding:0;}html{scroll-behavior:smooth;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--dark);color:var(--text);line-height:1.75;}
+a{color:var(--gold);text-decoration:none;}
+code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:rgba(212,175,55,0.08);border:1px solid var(--border);padding:2px 8px;border-radius:4px;color:var(--gold2);}
+pre{font-family:'IBM Plex Mono',monospace;font-size:12px;background:#040810;border:1px solid var(--border);border-radius:10px;padding:20px;overflow-x:auto;line-height:1.8;color:#a5d6ff;margin:16px 0;}
+
+/* NAV */
+.topbar{position:sticky;top:0;z-index:100;background:rgba(8,14,26,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:0 32px;height:56px;display:flex;align-items:center;gap:20px;}
+.logo{font-size:15px;font-weight:800;color:var(--gold);letter-spacing:.5px;white-space:nowrap;}
+.logo span{color:var(--muted);font-weight:400;}
+.nav-links{display:flex;gap:4px;flex-wrap:wrap;margin-right:auto;}
+.nav-links a{font-size:12px;padding:5px 12px;border-radius:16px;color:var(--muted);transition:.2s;white-space:nowrap;}
+.nav-links a:hover{color:var(--gold);background:rgba(212,175,55,0.08);}
+
+/* LAYOUT */
+.main{max-width:1120px;margin:0 auto;padding:48px 24px 100px;}
+
+/* SECTION */
+.section{margin-bottom:64px;scroll-margin-top:72px;}
+.section-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+.section-title{font-size:20px;font-weight:800;color:var(--gold);}
+.section-pill{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(212,175,55,0.12);color:var(--gold);border:1px solid var(--border);}
+.section-sub{font-size:13.5px;color:var(--muted);margin-bottom:24px;}
+
+/* PAGE BLOCKS */
+.page-block{background:var(--dark2);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden;}
+.page-header{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
+.page-header:hover{background:rgba(255,255,255,0.02);}
+.page-icon{font-size:18px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:rgba(212,175,55,0.08);border-radius:8px;flex-shrink:0;}
+.page-name{font-size:15px;font-weight:700;color:var(--text);}
+.page-url{font-size:11px;color:var(--muted);margin-top:2px;}
+.page-toggle{margin-right:auto;font-size:12px;color:var(--muted);}
+.page-body{padding:20px;display:none;}
+.page-body.open{display:block;}
+
+/* TABLES */
+.tbl{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;}
+.tbl th{background:var(--dark3);color:var(--muted);font-weight:700;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
+.tbl td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:rgba(255,255,255,0.015);}
+
+/* BADGES */
+.b{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;}
+.b-read{background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.25);}
+.b-write{background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);}
+.b-rw{background:rgba(245,158,11,0.12);color:#fbbf24;border:1px solid rgba(245,158,11,0.25);}
+.b-ok{background:rgba(16,185,129,0.12);color:#34d399;border:1px solid rgba(16,185,129,0.25);}
+.b-gold{background:rgba(212,175,55,0.12);color:var(--gold);border:1px solid var(--border);}
+.b-purple{background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.25);}
+.b-warn{background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);}
+
+/* BOXES */
+.box{border-radius:10px;padding:14px 18px;font-size:13px;margin:12px 0;line-height:1.8;}
+.box-gold{background:rgba(212,175,55,0.06);border:1px solid var(--border);}
+.box-red{background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);}
+.box-green{background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);}
+.box-blue{background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.25);}
+.box b{color:inherit;}
+
+/* FLOW */
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0;}
+.flow-node{background:var(--dark3);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:700;}
+.flow-node.gold{border-color:var(--gold);color:var(--gold);}
+.flow-node.green{border-color:var(--green);color:#34d399;}
+.flow-node.blue{border-color:var(--blue);color:#60a5fa;}
+.flow-node.red{border-color:var(--red);color:#f87171;}
+.flow-arrow{color:var(--muted);font-size:16px;}
+
+/* CARDS GRID */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:14px 0;}
+.card{background:var(--dark3);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.card-title{font-size:13px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.card-body{font-size:12.5px;color:var(--muted);line-height:1.8;}
+
+/* TREE */
+.tree{font-family:'IBM Plex Mono',monospace;font-size:12px;background:#040810;border:1px solid var(--border);border-radius:10px;padding:20px;line-height:2;color:#a5d6ff;}
+.tree .dir{color:var(--gold);}
+.tree .desc{color:var(--muted);font-size:11px;}
+
+/* SUPABASE TABLE */
+.db-table{background:var(--dark3);border:1px solid var(--border);border-radius:10px;padding:16px;margin:10px 0;}
+.db-table-name{font-size:14px;font-weight:800;color:var(--gold);font-family:'IBM Plex Mono',monospace;margin-bottom:10px;}
+.db-fields{display:flex;flex-wrap:wrap;gap:6px;}
+.db-field{font-size:11px;font-family:'IBM Plex Mono',monospace;padding:3px 10px;border-radius:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);color:var(--text);}
+.db-field.pk{border-color:rgba(212,175,55,0.4);color:var(--gold);}
+.db-field.fk{border-color:rgba(59,130,246,0.4);color:#60a5fa;}
+
+hr{border:none;border-top:1px solid var(--border);margin:40px 0;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">NOS <span>Admin Portal</span> — Technical Docs</div>
+  <nav class="nav-links">
+    <a href="#overview">Overview</a>
+    <a href="#files">Files</a>
+    <a href="#auth">Auth</a>
+    <a href="#db">Database</a>
+    <a href="#pages">Pages</a>
+    <a href="#flows">Key Flows</a>
+    <a href="#maintenance">Maintenance</a>
+  </nav>
+</div>
+
+<div class="main">
+
+<!-- ══ OVERVIEW ══ -->
+<div class="section" id="overview">
+  <div class="section-head"><div class="section-title">Overview</div></div>
+  <div class="section-sub">Admin Portal is the management interface — full control over agents, schedule, breaks, KPIs, quality, and requests</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">🌐 Hosting</div>
+      <div class="card-body">Cloudflare Pages via GitHub<br>Repo: <code>admin-portal2-main</code><br>Any commit → auto deploy in ~2 min<br>URL: <code>/admin-portal2/</code></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🗄️ Database</div>
+      <div class="card-body">Supabase — same project as Agent Portal<br>URL: <code>xzxdaupwwwdcwfnqweub.supabase.co</code><br>Key: <code>service_role</code> — bypasses all RLS<br>SDK: Supabase JS v2</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔐 Authentication</div>
+      <div class="card-body">Custom login via <code>admins</code> table<br>Username + password (plain hash)<br>Session stored in <code>sessionStorage</code> as <code>nos-admin</code><br>No Supabase Auth — service_role handles access</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔑 Security</div>
+      <div class="card-body"><code>service_role</code> key bypasses all RLS<br>Never expose to agents<br>Only in <code>js/supabase.js</code> + <code>login.html</code><br>Repo must be <b>Private</b> on GitHub</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📁 Structure</div>
+      <div class="card-body">Single-page per feature (no framework)<br>Vanilla JS + Supabase SDK<br>Shared CSS in <code>css/main.css</code><br>Shared JS in <code>js/auth.js</code> + <code>js/ui.js</code></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🎨 Theme</div>
+      <div class="card-body">Dark/Light toggle<br>Saved in <code>localStorage</code> as <code>nos-theme</code><br>Toggle button in every page topbar<br>CSS variables in <code>main.css</code></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FILES ══ -->
+<div class="section" id="files">
+  <div class="section-head"><div class="section-title">File Structure</div></div>
+  <div class="section-sub">Every file and its exact role</div>
+  <div class="tree">
+<span class="dir">admin-portal2-main/</span><br>
+│<br>
+├── <span style="color:#a5d6ff">index.html</span>        <span class="desc">← Dashboard home page (KPIs, recent data)</span><br>
+├── <span style="color:#a5d6ff">login.html</span>        <span class="desc">← Login page — reads from admins table</span><br>
+├── <span style="color:#a5d6ff">logo.png</span>          <span class="desc">← App logo (favicon for all pages)</span><br>
+│<br>
+├── <span class="dir">css/</span><br>
+│   └── <span style="color:#a5d6ff">main.css</span>      <span class="desc">← All styles — variables, components, layout</span><br>
+│<br>
+├── <span class="dir">js/</span><br>
+│   ├── <span style="color:#a5d6ff">supabase.js</span>   <span class="desc">← Supabase connection with service_role key</span><br>
+│   ├── <span style="color:#a5d6ff">auth.js</span>       <span class="desc">← checkAuth(), logout(), getAdminName()</span><br>
+│   └── <span style="color:#a5d6ff">ui.js</span>         <span class="desc">← showToast(), openModal(), openPanel(), statusBadge()</span><br>
+│<br>
+└── <span class="dir">pages/</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">agents.html</span>       <span class="desc">← Manage agents (add/edit/activate/deactivate)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">schedule.html</span>     <span class="desc">← Build and publish weekly schedules</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">breaks.html</span>       <span class="desc">← Manage daily break times</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">requests.html</span>     <span class="desc">← Approve/reject agent requests</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">excuses.html</span>      <span class="desc">← Approve/reject excuse requests</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">kpis.html</span>         <span class="desc">← View KPIs, edit quality scores, manage leaves</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">quality.html</span>      <span class="desc">← Submit quality reviews (star ratings)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">calllog.html</span>      <span class="desc">← View all call logs with filters</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">reports.html</span>      <span class="desc">← Charts and KPI summary reports</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">annual-leave.html</span> <span class="desc">← Track annual leave balance per agent</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">adherence.html</span>    <span class="desc">← Track deviations + Break Changes Report</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">waiving.html</span>      <span class="desc">← View all waived deviations</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span style="color:#a5d6ff">reference.html</span>    <span class="desc">← Manage call reasons + shift types</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;└── <span style="color:#a5d6ff">xcally-import.html</span><span class="desc">← Import performance CSV from xCally</span>
+  </div>
+</div>
+
+<!-- ══ AUTH ══ -->
+<div class="section" id="auth">
+  <div class="section-head"><div class="section-title">Authentication</div></div>
+  <div class="section-sub">How admin login works</div>
+
+  <div class="flow">
+    <div class="flow-node">Type username + password</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node blue">db.from('admins').select('*').eq('username').eq('password_hash')</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node green">Save to sessionStorage as 'nos-admin'</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node gold">Redirect to index.html</div>
+  </div>
+
+  <table class="tbl" style="margin-top:16px;">
+    <tr><th>Scenario</th><th>What happens</th></tr>
+    <tr><td>Open any page without session</td><td><code>checkAuth()</code> → redirect to <code>login.html</code></td></tr>
+    <tr><td>Open page with valid session</td><td><code>checkAuth()</code> returns session object → page loads</td></tr>
+    <tr><td>Click logout</td><td><code>sessionStorage.removeItem('nos-admin')</code> → redirect to login</td></tr>
+    <tr><td>Session data</td><td><code>{ username, role, loginTime }</code></td></tr>
+    <tr><td>Password storage</td><td>Plain text in <code>admins.password_hash</code> — change via Supabase directly</td></tr>
+  </table>
+
+  <div class="box box-red" style="margin-top:16px;">
+    <b>⚠️ Security note:</b> Admin password is stored as plain text in the <code>admins</code> table. Anyone with the service_role key can read it. Keep the GitHub repo Private at all times.
+  </div>
+</div>
+
+<!-- ══ DATABASE ══ -->
+<div class="section" id="db">
+  <div class="section-head"><div class="section-title">Supabase Tables</div></div>
+  <div class="section-sub">All tables the admin portal reads from and writes to</div>
+
+  <div class="db-table">
+    <div class="db-table-name">admins</div>
+    <div class="card-body" style="margin-bottom:8px;">Admin users who can log in. Only the admin portal reads this — agents have no access.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">username</span><span class="db-field">password_hash</span><span class="db-field">role</span><span class="db-field">created_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">agents</div>
+    <div class="card-body" style="margin-bottom:8px;">All agents — active and inactive. Used as a reference in almost every other table.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">formal_name</span><span class="db-field">email</span><span class="db-field">xcally_name</span><span class="db-field">xcally_id</span><span class="db-field">agent_code</span><span class="db-field">phone</span><span class="db-field">role</span><span class="db-field">status</span><span class="db-field">password_hash</span><span class="db-field">auth_id</span><span class="db-field">created_at</span><span class="db-field">updated_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">schedule_weeks</div>
+    <div class="card-body" style="margin-bottom:8px;">One record per week. Status: Draft → Open → Published → Closed.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">week_start</span><span class="db-field">week_end</span><span class="db-field">status</span><span class="db-field">created_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">schedule</div>
+    <div class="card-body" style="margin-bottom:8px;">One row per agent per day. The agent portal shows only Published weeks.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field fk">week_id</span><span class="db-field">shift_date</span><span class="db-field fk">shift_type_id</span><span class="db-field">day_type</span><span class="db-field">status</span><span class="db-field">agent_note</span><span class="db-field">admin_note</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">shift_types</div>
+    <div class="card-body" style="margin-bottom:8px;">Available shift definitions. Managed in Reference page.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">name</span><span class="db-field">start_time</span><span class="db-field">end_time</span><span class="db-field">is_active</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">breaks</div>
+    <div class="card-body" style="margin-bottom:8px;">Break times per agent per day. <code>scheduled_*</code> columns are set once and never change — <code>break1/2/lunch</code> change when agent swaps.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">break_date</span><span class="db-field">shift_time</span><span class="db-field">break1</span><span class="db-field">lunch</span><span class="db-field">break2</span><span class="db-field" style="border-color:rgba(212,175,55,0.4);color:var(--gold);">scheduled_break1</span><span class="db-field" style="border-color:rgba(212,175,55,0.4);color:var(--gold);">scheduled_lunch</span><span class="db-field" style="border-color:rgba(212,175,55,0.4);color:var(--gold);">scheduled_break2</span><span class="db-field">updated_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">requests</div>
+    <div class="card-body" style="margin-bottom:8px;">All agent requests. Types: Time Off, Missing Punch, Shift Swap, Schedule Request, Break Change.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">type</span><span class="db-field">status</span><span class="db-field">details (JSON)</span><span class="db-field">created_at</span><span class="db-field">updated_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">excuses</div>
+    <div class="card-body" style="margin-bottom:8px;">Separate from requests. Each excuse = 2 hours deducted from Exceptions KPI if approved.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">excuse_date</span><span class="db-field">excuse_type</span><span class="db-field">status</span><span class="db-field">month_year</span><span class="db-field">notes</span><span class="db-field">reason</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">daily_performance</div>
+    <div class="card-body" style="margin-bottom:8px;">Imported from xCally CSV. One row per agent per day. Unique constraint on <code>agent_id + perf_date</code>.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">perf_date</span><span class="db-field">conformance</span><span class="db-field">missing_sec</span><span class="db-field">active_sec</span><span class="db-field">target_sec</span><span class="db-field">avg_aht</span><span class="db-field">calls</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">quality_scores</div>
+    <div class="card-body" style="margin-bottom:8px;">One score per agent per month. Auto-calculated as average of all quality_reviews for that month.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">month</span><span class="db-field">year</span><span class="db-field">score</span><span class="db-field">created_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">quality_reviews</div>
+    <div class="card-body" style="margin-bottom:8px;">Individual call quality assessments. Multiple reviews per agent per month → average = quality_score.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">month</span><span class="db-field">year</span><span class="db-field">percentage</span><span class="db-field">scores (JSON)</span><span class="db-field">notes</span><span class="db-field">reviewed_by</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">annual_leave</div>
+    <div class="card-body" style="margin-bottom:8px;">One row per agent per year. Auto-updated when schedule is published. <code>total_used</code> = sum of all <code>used_*</code> months.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">year</span><span class="db-field">entitlement</span><span class="db-field">carry_over</span><span class="db-field">total_used</span><span class="db-field">remaining</span><span class="db-field">used_jan</span><span class="db-field">used_feb</span><span class="db-field">... used_dec</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">adherence_deviations</div>
+    <div class="card-body" style="margin-bottom:8px;">Manual or auto-detected deviations. Waiving = setting <code>is_waived=true</code> with reason.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field fk">agent_id</span><span class="db-field">agent_name</span><span class="db-field">deviation_date</span><span class="db-field">deviation_type</span><span class="db-field">scheduled_value</span><span class="db-field">actual_value</span><span class="db-field">deviation_minutes</span><span class="db-field">is_waived</span><span class="db-field">waived_by</span><span class="db-field">waive_reason</span><span class="db-field">waived_at</span><span class="db-field">source</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">call_logs</div>
+    <div class="card-body" style="margin-bottom:8px;">Written by agents. Read-only for admin. Filtered by date, agent, reason.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">agent_name</span><span class="db-field">customer_name</span><span class="db-field">customer_mobile</span><span class="db-field">call_reason</span><span class="db-field">business_relativity</span><span class="db-field">sales_call_requested</span><span class="db-field">media_source</span><span class="db-field">budget</span><span class="db-field">channel</span><span class="db-field">logged_at</span>
+    </div>
+  </div>
+
+  <div class="db-table">
+    <div class="db-table-name">call_reasons</div>
+    <div class="card-body" style="margin-bottom:8px;">Dropdown options for call log form. Managed in Reference page. Categories: Projects Leads, Service, etc.</div>
+    <div class="db-fields">
+      <span class="db-field pk">id</span><span class="db-field">name</span><span class="db-field">category</span><span class="db-field">is_active</span><span class="db-field">sort_order</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGES ══ -->
+<div class="section" id="pages">
+  <div class="section-head"><div class="section-title">Pages — How Each Works</div></div>
+  <div class="section-sub">Click any page to expand details</div>
+
+  <!-- DASHBOARD -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">🏠</div>
+      <div><div class="page-name">Dashboard — index.html</div><div class="page-url">/admin-portal2/</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">First page after login. Shows a real-time overview of the operation.</p>
+      <table class="tbl">
+        <tr><th>KPI Card</th><th>Source</th><th>How calculated</th></tr>
+        <tr><td>Total Agents</td><td><code>agents</code></td><td>Count of all agents regardless of status</td></tr>
+        <tr><td>Active Agents</td><td><code>schedule</code></td><td>Count of agents with <code>day_type=Work</code> on today's date</td></tr>
+        <tr><td>Calls Today</td><td><code>call_logs</code></td><td>Count where <code>logged_at</code> is today</td></tr>
+        <tr><td>Pending Requests</td><td><code>requests</code></td><td>Count where <code>status=Pending</code></td></tr>
+        <tr><td>Annual Leave (today)</td><td><code>schedule</code></td><td>Count where <code>day_type=Annual</code> today</td></tr>
+        <tr><td>Calls MTD</td><td><code>call_logs</code></td><td>Count from 1st of month to now</td></tr>
+      </table>
+      <div class="box box-gold" style="margin-top:12px;">The page also shows: Recent Requests (last 5), Today's Schedule grid, Recent Calls (last 10). All loaded in parallel via <code>Promise.all()</code>.</div>
+      <div class="box box-blue"><b>Maintenance:</b> If KPIs show wrong data → check the Supabase tables directly. The date filter uses Cairo timezone via <code>Africa/Cairo</code>.</div>
+    </div>
+  </div>
+
+  <!-- AGENTS -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">👥</div>
+      <div><div class="page-name">Agents — agents.html</div><div class="page-url">/admin-portal2/pages/agents.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <table class="tbl">
+        <tr><th>Action</th><th>What it does</th><th>Tables affected</th></tr>
+        <tr><td>Add Agent</td><td>Creates new agent + creates annual_leave record for current year (entitlement=21)</td><td><span class="b b-write">INSERT</span> agents, annual_leave</td></tr>
+        <tr><td>Edit Agent</td><td>Updates all fields except password and agent_code</td><td><span class="b b-write">UPDATE</span> agents, annual_leave</td></tr>
+        <tr><td>Activate/Deactivate</td><td>Toggles status between Active/Inactive</td><td><span class="b b-write">UPDATE</span> agents</td></tr>
+        <tr><td>Delete Agent</td><td>Permanent delete — use with caution</td><td><span class="b b-write">DELETE</span> agents</td></tr>
+        <tr><td>Search/Filter</td><td>Client-side filtering by name, status, role</td><td>—</td></tr>
+      </table>
+      <div class="box box-red"><b>⚠️ Important:</b> Adding an agent here does NOT create a Supabase Auth user automatically. After adding, you must run <code>migrate-once.html</code> OR create the auth user manually from Supabase Dashboard → Authentication → Users. Without this, the agent cannot log in to the Agent Portal.</div>
+      <div class="box box-gold"><b>Fields:</b> formal_name (must match exactly with xcally_name for KPI import), email (used for Supabase Auth), xcally_name (used to match CSV rows in xCally import), role (Admin/Manager/Agent), status (Active/Inactive).</div>
+    </div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📅</div>
+      <div><div class="page-name">Schedule — schedule.html</div><div class="page-url">/admin-portal2/pages/schedule.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">The most critical page. Controls what agents see in their portal.</p>
+      <div class="flow">
+        <div class="flow-node">Create Week</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">Fill shifts per agent per day</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node gold">Publish</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node green">Auto-generate breaks</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node green">Auto-update annual_leave</div>
+      </div>
+      <table class="tbl" style="margin-top:12px;">
+        <tr><th>Action</th><th>What it does</th></tr>
+        <tr><td>Create Week</td><td>Inserts new row in <code>schedule_weeks</code> with status=Draft</td></tr>
+        <tr><td>Save Schedule</td><td>Upserts all rows in <code>schedule</code> (conflict on agent_id+shift_date)</td></tr>
+        <tr><td><b>Publish</b></td><td>1. Saves schedule 2. Sets week status=Published 3. Auto-generates breaks 4. Updates annual_leave 5. Shows to agents</td></tr>
+        <tr><td>Agent requests</td><td>If agent submitted a Schedule Request, it appears as a banner — admin can apply or ignore it</td></tr>
+        <tr><td>Day types</td><td>Work, Off, Annual, Sick, Casual, PH, Task</td></tr>
+        <tr><td>Export PNG</td><td>Downloads the schedule grid as an image</td></tr>
+      </table>
+      <div class="box box-gold"><b>Publish flow in detail:</b> For each working day in the week, the algorithm calculates Break 1, Lunch, and Break 2 for each agent — ensuring minimum 2 agents always on queue. Times are saved to both <code>break1/2/lunch</code> AND <code>scheduled_break1/2/lunch</code>.</div>
+      <div class="box box-blue"><b>Annual leave update:</b> On publish, counts all Annual days per agent per month for the entire year → updates <code>used_jan...used_dec</code> + <code>total_used</code> + <code>remaining</code> in annual_leave table.</div>
+    </div>
+  </div>
+
+  <!-- BREAKS -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">☕</div>
+      <div><div class="page-name">Breaks — breaks.html</div><div class="page-url">/admin-portal2/pages/breaks.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <table class="tbl">
+        <tr><th>Action</th><th>What it does</th></tr>
+        <tr><td>Daily View</td><td>Shows all agents with their break times for selected date. Queue timeline shows coverage.</td></tr>
+        <tr><td>Save All</td><td>Upserts breaks for all agents on selected date. Saves BOTH actual AND scheduled columns.</td></tr>
+        <tr><td>Copy from Yesterday</td><td>Loads yesterday's breaks as starting point. Saves to actual columns only — scheduled columns NOT affected (known limitation).</td></tr>
+        <tr><td>Regenerate from Schedule</td><td>Re-runs the break algorithm based on today's shifts. Overwrites everything.</td></tr>
+        <tr><td>Weekly View</td><td>Shows break times across the full week for all agents.</td></tr>
+      </table>
+      <div class="box box-gold"><b>Queue Timeline:</b> Shows how many agents are available at each 15-minute slot. Red = below minimum (2 agents), Yellow = at minimum, Green = OK. Algorithm ensures breaks are spread out.</div>
+      <div class="box box-red"><b>⚠️ Known limitation:</b> "Copy from Yesterday" does not copy scheduled_break columns. Scheduled columns only get populated via Save All and Regenerate. This means break change comparison won't work for copied days unless you then Save All.</div>
+    </div>
+  </div>
+
+  <!-- REQUESTS -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📋</div>
+      <div><div class="page-name">Requests — requests.html</div><div class="page-url">/admin-portal2/pages/requests.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">All agent requests in one place. Simple approve/reject.</p>
+      <table class="tbl">
+        <tr><th>Request Type</th><th>What agent submitted</th><th>Admin action</th></tr>
+        <tr><td>Time Off</td><td>Annual, Sick, Casual, PH, or Task leave request</td><td>Approve or Reject → status updated</td></tr>
+        <tr><td>Missing Punch</td><td>Agent forgot to clock in/out</td><td>Approve or Reject</td></tr>
+        <tr><td>Shift Swap</td><td>Agent wants to swap shift with colleague</td><td>Approve or Reject — admin must manually update schedule</td></tr>
+        <tr><td>Schedule Request</td><td>Agent requested a change to their weekly schedule</td><td>Appears as banner in Schedule page — apply or ignore</td></tr>
+        <tr><td>Break Change</td><td>Agent changed their break time (auto-Approved)</td><td>View only — already executed</td></tr>
+      </table>
+      <div class="box box-gold"><b>Note:</b> Approving a request here only changes the status. It does NOT automatically update the schedule or breaks. Admin must make the actual changes manually in Schedule/Breaks pages.</div>
+    </div>
+  </div>
+
+  <!-- EXCUSES -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">⚠️</div>
+      <div><div class="page-name">Excuses — excuses.html</div><div class="page-url">/admin-portal2/pages/excuses.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <table class="tbl">
+        <tr><th>Action</th><th>What it does</th></tr>
+        <tr><td>Approve Excuse</td><td>Sets <code>status=Approved</code>. Each approved excuse = 2 hours in the Exceptions KPI.</td></tr>
+        <tr><td>Reject Excuse</td><td>Sets <code>status=Rejected</code> with rejection reason.</td></tr>
+        <tr><td>Reset Excuse</td><td>Sets back to <code>status=Pending</code>.</td></tr>
+        <tr><td>Delete Excuse</td><td>Permanent delete.</td></tr>
+        <tr><td>Add Excuse (Admin)</td><td>Admin can add excuses manually on behalf of an agent.</td></tr>
+      </table>
+      <div class="box box-gold"><b>How Exceptions KPI works:</b> Agent Portal counts all approved excuses in the date range → multiplies by 2 hours. So 3 approved excuses = "6 Hours" shown in the Exceptions card.</div>
+    </div>
+  </div>
+
+  <!-- KPIS -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📊</div>
+      <div><div class="page-name">KPIs — kpis.html</div><div class="page-url">/admin-portal2/pages/kpis.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">Three tabs: KPI Table, Leaves, Annual Leave.</p>
+      <table class="tbl">
+        <tr><th>Tab</th><th>What it shows</th><th>Can edit?</th></tr>
+        <tr><td>KPI Table</td><td>All agents with Conformance, Missing, AHT, Calls, Exceptions, Quality for selected month</td><td>Only Quality score is editable here</td></tr>
+        <tr><td>Leaves</td><td>Special leave days (double pay, etc.) from <code>leaves</code> table</td><td>Add/delete leave records</td></tr>
+        <tr><td>Annual Leave</td><td>Annual leave balance per agent</td><td>Edit entitlement and carry-over</td></tr>
+      </table>
+      <div class="box box-gold"><b>KPI calculation (same as Agent Portal):</b>
+        <br>• Conformance = average of daily_performance.conformance
+        <br>• Missing Time = sum of missing_sec → if ≤300sec = "Full Time"
+        <br>• AHT = average of avg_aht where avg_aht > 0
+        <br>• Exceptions = count of approved excuses × 2 hours
+        <br>• Quality = quality_scores.score for that month
+      </div>
+      <div class="box box-blue"><b>Copy KPI Report:</b> Button at top copies a formatted text summary to clipboard — useful for sharing with management.</div>
+    </div>
+  </div>
+
+  <!-- QUALITY -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">⭐</div>
+      <div><div class="page-name">Quality — quality.html</div><div class="page-url">/admin-portal2/pages/quality.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <div class="flow">
+        <div class="flow-node">Select agent + month</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">Rate each question (stars)</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">Submit Review</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node green">INSERT quality_reviews</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node green">Calculate average → UPSERT quality_scores</div>
+      </div>
+      <table class="tbl" style="margin-top:12px;">
+        <tr><th>Table</th><th>Role</th></tr>
+        <tr><td><code>quality_questions</code></td><td>The list of rating criteria (e.g., "Communication", "Accuracy"). Editable from within the page.</td></tr>
+        <tr><td><code>quality_note_templates</code></td><td>Pre-defined note templates to speed up review notes.</td></tr>
+        <tr><td><code>quality_reviews</code></td><td>Individual review records — one per submission.</td></tr>
+        <tr><td><code>quality_scores</code></td><td>Final monthly score per agent — average of all reviews for that month. This is what appears in KPIs.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- XCALLY IMPORT -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📥</div>
+      <div><div class="page-name">xCally Import — xcally-import.html</div><div class="page-url">/admin-portal2/pages/xcally-import.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">The main way to get performance data into the system. Run this monthly (or more often).</p>
+      <div class="flow">
+        <div class="flow-node">Export CSV from xCally</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">Drop CSV here</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">Process → Review table</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node gold">Save All → daily_performance</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node green">KPIs update automatically</div>
+      </div>
+      <table class="tbl" style="margin-top:12px;">
+        <tr><th>Step</th><th>Details</th></tr>
+        <tr><td>CSV parsing</td><td>Reads each row, matches agent by <code>xcally_name</code> field. If name doesn't match → row is skipped with warning.</td></tr>
+        <tr><td>Calculation</td><td>Per agent per day: active_sec, missing_sec, avg_aht, calls count, conformance %</td></tr>
+        <tr><td>Target hours</td><td>Set once (fixed) or per date range. Used to calculate conformance = active/target × 100.</td></tr>
+        <tr><td>Save</td><td>Upserts to <code>daily_performance</code> — conflict on <code>agent_id + perf_date</code>. Safe to re-import.</td></tr>
+        <tr><td>Reapply Excuses</td><td>After import, click this to adjust missing_sec for approved excuses (deducts excuse time from missing).</td></tr>
+      </table>
+      <div class="box box-red"><b>⚠️ Name matching:</b> The agent's <code>xcally_name</code> in the agents table must match EXACTLY the name in the CSV. If an agent's name doesn't match, their data won't import. Fix in Agents page → Edit → xCally Name field.</div>
+    </div>
+  </div>
+
+  <!-- ADHERENCE -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📉</div>
+      <div><div class="page-name">Adherence — adherence.html</div><div class="page-url">/admin-portal2/pages/adherence.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">Two sections: Deviation tracking (manual) + Break Changes Report (automatic comparison).</p>
+      <table class="tbl">
+        <tr><th>Deviation Type</th><th>Meaning</th></tr>
+        <tr><td>Late Login</td><td>Agent started shift later than scheduled</td></tr>
+        <tr><td>Early Logout</td><td>Agent ended shift earlier than scheduled</td></tr>
+        <tr><td>Long Break</td><td>Break lasted longer than allowed</td></tr>
+        <tr><td>Missed Shift</td><td>Agent didn't show up at all</td></tr>
+        <tr><td>Extra Break</td><td>Agent took an unscheduled break</td></tr>
+      </table>
+      <div class="box box-gold" style="margin-top:12px;"><b>Break Changes Report (new):</b> Compares <code>scheduled_break1/2/lunch</code> vs actual <code>break1/2/lunch</code>. Shows all differences. If diff ≥ 15 minutes → flagged with option to manually add as deviation. This ensures fairness — admin decides, not automatic.</div>
+      <div class="box box-blue"><b>Waiving:</b> Any deviation can be waived (excused). Go to Waiving page to view/undo all waivers.</div>
+    </div>
+  </div>
+
+  <!-- CALLLOG -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📞</div>
+      <div><div class="page-name">Call Log — calllog.html</div><div class="page-url">/admin-portal2/pages/calllog.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">Read-only view of all call logs submitted by agents.</p>
+      <table class="tbl">
+        <tr><th>Filter</th><th>How it works</th></tr>
+        <tr><td>Date range</td><td>From/To date picker — Cairo timezone aware</td></tr>
+        <tr><td>Agent</td><td>Filter by agent_name</td></tr>
+        <tr><td>Call Reason</td><td>Filter by call_reason field</td></tr>
+        <tr><td>Channel</td><td>Call or WhatsApp</td></tr>
+        <tr><td>Search</td><td>Client-side text search across results</td></tr>
+      </table>
+      <div class="box box-gold"><b>KPIs shown:</b> Today's calls, MTD calls, Projects leads count (calls where reason is in "Projects Leads" category).</div>
+    </div>
+  </div>
+
+  <!-- REFERENCE -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">⚙️</div>
+      <div><div class="page-name">Reference — reference.html</div><div class="page-url">/admin-portal2/pages/reference.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">Manage the dropdown options used across the system.</p>
+      <table class="tbl">
+        <tr><th>Tab</th><th>Manages</th><th>Used in</th></tr>
+        <tr><td>Call Reasons</td><td>Add/edit/toggle active status of call reasons per category</td><td>Agent Portal call log form, Admin call log filters</td></tr>
+        <tr><td>Shift Types</td><td>Add/edit shift time ranges (e.g., "Morning 10:00-18:00")</td><td>Schedule page, Break algorithm</td></tr>
+      </table>
+      <div class="box box-red"><b>⚠️ Deactivating a shift type</b> hides it from new schedules but doesn't break existing ones. Deleting a shift type that's referenced in schedule will cause errors.</div>
+    </div>
+  </div>
+
+  <!-- REPORTS -->
+  <div class="page-block">
+    <div class="page-header" onclick="toggle(this)">
+      <div class="page-icon">📈</div>
+      <div><div class="page-name">Reports — reports.html</div><div class="page-url">/admin-portal2/pages/reports.html</div></div>
+      <span class="page-toggle">▼</span>
+    </div>
+    <div class="page-body">
+      <p style="font-size:13px;margin-bottom:12px;">Visual summary of all KPIs with charts.</p>
+      <table class="tbl">
+        <tr><th>Section</th><th>Shows</th></tr>
+        <tr><td>Call Stats</td><td>Calls by agent (bar chart), daily trend (line chart), top call reasons</td></tr>
+        <tr><td>KPI Table</td><td>All agents with full KPI breakdown for selected month — same calculation as KPIs page</td></tr>
+        <tr><td>Requests Chart</td><td>Doughnut: Pending vs Approved vs Rejected requests</td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ KEY FLOWS ══ -->
+<div class="section" id="flows">
+  <div class="section-head"><div class="section-title">Key Flows</div></div>
+  <div class="section-sub">The most important sequences to understand</div>
+
+  <div style="font-size:14px;font-weight:700;margin-bottom:8px;">Weekly Operations Flow</div>
+  <div class="flow">
+    <div class="flow-node">Mon: Build schedule</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node gold">Publish → breaks auto-generated</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Daily: Review break changes</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Approve/reject requests</div>
+  </div>
+
+  <div style="font-size:14px;font-weight:700;margin:20px 0 8px;">Monthly KPI Flow</div>
+  <div class="flow">
+    <div class="flow-node">Export CSV from xCally</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node gold">Import in xCally Import page</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Reapply Excuses</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Add Quality scores</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node green">Agents see updated KPIs</div>
+  </div>
+
+  <div style="font-size:14px;font-weight:700;margin:20px 0 8px;">New Agent Flow</div>
+  <div class="flow">
+    <div class="flow-node">Add in Agents page</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node gold">Create Supabase Auth user</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Add to next week's schedule</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node green">Agent can log in</div>
+  </div>
+</div>
+
+<!-- ══ MAINTENANCE ══ -->
+<div class="section" id="maintenance">
+  <div class="section-head"><div class="section-title">Maintenance Guide</div></div>
+  <div class="section-sub">Everything you need to keep the system running</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">🔄 Update the code</div>
+      <div class="card-body">
+        1. Edit the file locally<br>
+        2. Push to GitHub (admin-portal2-main repo)<br>
+        3. Cloudflare auto-deploys in ~2 min<br>
+        4. Hard refresh browser (Ctrl+Shift+R)
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔑 Change admin password</div>
+      <div class="card-body">
+        Go to Supabase Dashboard<br>
+        → Table Editor → admins<br>
+        → Edit the password_hash column<br>
+        (plain text, no hashing)
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">➕ Add new admin user</div>
+      <div class="card-body">
+        Supabase → Table Editor → admins<br>
+        → Insert row with username, password_hash, role
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 Monthly KPI routine</div>
+      <div class="card-body">
+        1. xCally Import → upload CSV<br>
+        2. Click "Reapply Excuses"<br>
+        3. Quality page → add reviews<br>
+        4. Check KPIs page for accuracy
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔧 Fix wrong KPI data</div>
+      <div class="card-body">
+        Re-import the CSV for that date range<br>
+        Upsert is safe — won't duplicate<br>
+        Or edit directly in Supabase Table Editor
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📅 Weekly schedule routine</div>
+      <div class="card-body">
+        1. Create new week in Schedule page<br>
+        2. Fill all shifts<br>
+        3. Publish → breaks auto-generated<br>
+        4. Check Breaks page for accuracy
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">☕ Daily breaks routine</div>
+      <div class="card-body">
+        Breaks page → select today<br>
+        Review the queue timeline<br>
+        Adjust if needed → Save All<br>
+        Check Break Changes Report at end of day
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚠️ Agent name mismatch</div>
+      <div class="card-body">
+        If xCally import skips an agent:<br>
+        1. Check the CSV for exact name spelling<br>
+        2. Agents page → Edit → xCally Name<br>
+        3. Re-import the CSV
+      </div>
+    </div>
+  </div>
+
+  <div class="box box-red" style="margin-top:24px;">
+    <b>⚠️ Critical reminders:</b><br>
+    • GitHub repo MUST be Private — service_role key is in the code<br>
+    • Never share the service_role key<br>
+    • service_role bypasses ALL Supabase RLS — admin can read/write everything<br>
+    • Deleting an agent with active schedule/breaks/requests may cause display issues
+  </div>
+
+  <div style="margin-top:24px;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:12px;">Quick Reference — Keys & URLs</div>
+    <pre>Supabase URL:     https://xzxdaupwwwdcwfnqweub.supabase.co
+Service Role Key: js/supabase.js + login.html (keep private)
+Cloudflare:       admin-portal2-main repo → auto deploy
+Login URL:        /admin-portal2/login.html
+Dashboard:        /admin-portal2/index.html
+Admins table:     Supabase → Table Editor → admins</pre>
+  </div>
+</div>
+
+<div style="text-align:center;padding:40px;color:var(--muted);font-size:12px;">NOS Admin Portal — Technical Documentation — April 2026</div>
+
+</div>
+
+<script>
+function toggle(header) {
+  const body = header.nextElementSibling;
+  const arrow = header.querySelector('.page-toggle');
+  body.classList.toggle('open');
+  arrow.textContent = body.classList.contains('open') ? '▲' : '▼';
+}
+</script>
+</body>
+</html>

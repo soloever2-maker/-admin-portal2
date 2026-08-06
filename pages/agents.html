@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Agents</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Agents</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Manage Team
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="loadAgents()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+        <button class="btn btn-primary" onclick="openAddPanel()">
+          <i class="fas fa-plus"></i> Add Agent
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE CONTENT -->
+    <div class="page-content">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid fade-up" style="grid-template-columns:repeat(4,1fr);">
+        <div class="kpi-card gold">
+          <span class="kpi-icon">👥</span>
+          <div class="kpi-label">Total Agents</div>
+          <div class="kpi-value" id="k-total">—</div>
+        </div>
+        <div class="kpi-card green">
+          <span class="kpi-icon">✅</span>
+          <div class="kpi-label">Active</div>
+          <div class="kpi-value" id="k-active">—</div>
+        </div>
+        <div class="kpi-card red">
+          <span class="kpi-icon">⏸️</span>
+          <div class="kpi-label">Inactive</div>
+          <div class="kpi-value" id="k-inactive">—</div>
+        </div>
+        <div class="kpi-card purple">
+          <span class="kpi-icon">🔑</span>
+          <div class="kpi-label">Admins</div>
+          <div class="kpi-value" id="k-admins">—</div>
+        </div>
+      </div>
+
+      <!-- TABLE CARD -->
+      <div class="section-card fade-up">
+        <div class="section-header">
+          <div class="section-title">
+            <i class="fas fa-users" style="color:var(--gold)"></i>
+            All Agents
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <!-- Search -->
+            <div class="search-wrap" style="min-width:220px;">
+              <i class="fas fa-search"></i>
+              <input type="text" class="search-input" placeholder="Search agents..." oninput="filterAgents(this.value)">
+            </div>
+            <!-- Filter Status -->
+            <select class="form-input" style="width:auto;padding:8px 12px;" onchange="filterByStatus(this.value)">
+              <option value="">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            <!-- Filter Role -->
+            <select class="form-input" style="width:auto;padding:8px 12px;" onchange="filterByRole(this.value)">
+              <option value="">All Roles</option>
+              <option value="Agent">Agent</option>
+              <option value="Admin">Admin</option>
+              <option value="Manager">Manager</option>
+            </select>
+          </div>
+        </div>
+        <div class="section-body no-pad">
+          <div class="table-wrap">
+            <table class="nos-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Email</th>
+                  <th>xCALLY Name</th>
+                  <th>xCALLY ID</th>
+                  <th>Agent Code</th>
+                  <th>Phone</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="agents-tbody">
+                <tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ SLIDE PANEL (Add/Edit) ══ -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="slide-panel">
+  <div class="panel-header">
+    <div class="panel-title" id="panel-title">Add Agent</div>
+    <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="panel-body">
+    <input type="hidden" id="agent-id">
+
+    <div class="form-grid form-grid-2">
+      <div class="form-group form-full">
+        <label class="form-label">Formal Name <span class="req">*</span></label>
+        <input type="text" id="f-name" class="form-input" placeholder="Full name">
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Email <span class="req">*</span></label>
+        <input type="email" id="f-email" class="form-input" placeholder="name@nationsofsky.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">xCALLY Name</label>
+        <input type="text" id="f-xcally-name" class="form-input" placeholder="xcallyname">
+      </div>
+      <div class="form-group">
+        <label class="form-label">xCALLY ID</label>
+        <input type="text" id="f-xcally-id" class="form-input" placeholder="1003">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent Code</label>
+        <input type="text" id="f-code" class="form-input" placeholder="0051">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input type="tel" id="f-phone" class="form-input" placeholder="01xxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role <span class="req">*</span></label>
+        <select id="f-role" class="form-input">
+          <option value="Agent">Agent</option>
+          <option value="Manager">Manager</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status <span class="req">*</span></label>
+        <select id="f-status" class="form-input">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="form-group form-full" id="password-group">
+        <label class="form-label">Password <span class="req">*</span></label>
+        <input type="text" id="f-password" class="form-input" placeholder="Set initial password">
+        <small style="color:var(--muted);font-size:11px;margin-top:4px;">Agent can change this later from the portal</small>
+      </div>
+    </div>
+
+    <!-- Annual Leave Section -->
+    <div class="divider"></div>
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--text);margin-bottom:14px;">
+      <i class="fas fa-umbrella-beach" style="color:var(--gold);margin-right:6px;"></i>
+      Annual Leave Setup
+    </div>
+    <div class="form-grid form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Entitlement (Days)</label>
+        <input type="number" id="f-entitlement" class="form-input" value="21" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carry Over (Days)</label>
+        <input type="number" id="f-carryover" class="form-input" value="0" min="0">
+      </div>
+    </div>
+
+    <div id="panel-error" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;color:var(--danger);font-size:13px;font-weight:600;margin-top:12px;"></div>
+  </div>
+  <div class="panel-footer">
+    <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+    <button class="btn btn-primary" id="save-btn" onclick="saveAgent()">
+      <i class="fas fa-save"></i> Save Agent
+    </button>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+// ── Init ──
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+let allAgents = [];
+let filterStatus = '';
+let filterRole   = '';
+let searchQuery  = '';
+// ── Load Agents ──
+async function loadAgents() {
+  const tbody = document.getElementById('agents-tbody');
+  tbody.innerHTML = `<tr><td colspan="9"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>`;
+
+  try {
+    const { data, error } = await db.from('agents')
+      .select('*')
+      .order('formal_name');
+
+    if (error) throw error;
+    allAgents = data || [];
+    updateKPIs();
+    renderTable();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><span class="empty-icon">❌</span>Failed to load agents</div></td></tr>`;
+    showToast('Failed to load agents: ' + e.message, 'error');
+  }
+}
+
+// ── Update KPIs ──
+function updateKPIs() {
+  document.getElementById('k-total').innerText   = allAgents.length;
+  document.getElementById('k-active').innerText  = allAgents.filter(a=>a.status==='Active').length;
+  document.getElementById('k-inactive').innerText= allAgents.filter(a=>a.status==='Inactive').length;
+  document.getElementById('k-admins').innerText  = allAgents.filter(a=>a.role==='Admin').length;
+}
+
+// ── Render Table ──
+function renderTable() {
+  const tbody = document.getElementById('agents-tbody');
+  let filtered = allAgents;
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(a =>
+      a.formal_name?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q) ||
+      a.xcally_name?.toLowerCase().includes(q) ||
+      a.agent_code?.includes(q) ||
+      a.phone?.includes(q)
+    );
+  }
+  if (filterStatus) filtered = filtered.filter(a => a.status === filterStatus);
+  if (filterRole)   filtered = filtered.filter(a => a.role   === filterRole);
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><span class="empty-icon">🔍</span>No agents found</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(a => `
+    <tr>
+      <td>
+        <div class="agent-cell">
+          <div class="agent-avatar">${initials(a.formal_name)}</div>
+          <div>
+            <div class="agent-name-cell">${a.formal_name}</div>
+          </div>
+        </div>
+      </td>
+      <td style="color:var(--muted);font-size:12px;">${a.email || '—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${a.xcally_name || '—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${a.xcally_id || '—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${a.agent_code || '—'}</td>
+      <td style="font-size:12px;">${a.phone || '—'}</td>
+      <td>${statusBadge(a.role)}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-info btn-sm btn-icon" onclick="openEditPanel('${a.id}')" title="Edit">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="btn btn-sm btn-icon ${a.status==='Active'?'btn-danger':'btn-success'}"
+            onclick="toggleStatus('${a.id}','${a.status}')" title="${a.status==='Active'?'Deactivate':'Activate'}">
+            <i class="fas fa-${a.status==='Active'?'ban':'check'}"></i>
+          </button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteAgent('${a.id}','${a.formal_name}')" title="Delete">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Filters ──
+function filterAgents(q) { searchQuery = q; renderTable(); }
+function filterByStatus(v) { filterStatus = v; renderTable(); }
+function filterByRole(v)   { filterRole   = v; renderTable(); }
+
+// ── Open Add Panel ──
+function openAddPanel() {
+  document.getElementById('agent-id').value   = '';
+  document.getElementById('f-name').value     = '';
+  document.getElementById('f-email').value    = '';
+  document.getElementById('f-xcally-name').value = '';
+  document.getElementById('f-xcally-id').value   = '';
+  document.getElementById('f-code').value     = '';
+  document.getElementById('f-phone').value    = '';
+  document.getElementById('f-role').value     = 'Agent';
+  document.getElementById('f-status').value   = 'Active';
+  document.getElementById('f-password').value = '';
+  document.getElementById('f-entitlement').value = '21';
+  document.getElementById('f-carryover').value   = '0';
+  document.getElementById('password-group').style.display = 'block';
+  document.getElementById('panel-error').style.display = 'none';
+  document.getElementById('panel-title').innerText = 'Add Agent';
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> Save Agent';
+  openPanel('Add Agent');
+}
+
+// ── Open Edit Panel ──
+function openEditPanel(id) {
+  const a = allAgents.find(x => x.id === id);
+  if (!a) return;
+
+  document.getElementById('agent-id').value      = a.id;
+  document.getElementById('f-name').value        = a.formal_name || '';
+  document.getElementById('f-email').value       = a.email || '';
+  document.getElementById('f-xcally-name').value = a.xcally_name || '';
+  document.getElementById('f-xcally-id').value   = a.xcally_id || '';
+  document.getElementById('f-code').value        = a.agent_code || '';
+  document.getElementById('f-phone').value       = a.phone || '';
+  document.getElementById('f-role').value        = a.role || 'Agent';
+  document.getElementById('f-status').value      = a.status || 'Active';
+  document.getElementById('f-password').value    = '';
+  document.getElementById('f-entitlement').value = '21';
+  document.getElementById('f-carryover').value   = '0';
+  document.getElementById('password-group').style.display = 'none';
+  document.getElementById('panel-error').style.display = 'none';
+  document.getElementById('panel-title').innerText = 'Edit Agent';
+  document.getElementById('save-btn').innerHTML = '<i class="fas fa-save"></i> Update Agent';
+
+  // Load annual leave data
+  loadAnnualLeave(a.id);
+  openPanel('Edit Agent');
+}
+
+// ── Load Annual Leave ──
+async function loadAnnualLeave(agentId) {
+  const year = new Date().getFullYear();
+  const { data } = await db.from('annual_leave')
+    .select('entitlement, carry_over')
+    .eq('agent_id', agentId)
+    .eq('year', year)
+    .single();
+
+  if (data) {
+    document.getElementById('f-entitlement').value = data.entitlement || 21;
+    document.getElementById('f-carryover').value   = data.carry_over  || 0;
+  }
+}
+
+// ── Save Agent ──
+async function saveAgent() {
+  const id   = document.getElementById('agent-id').value;
+  const name = document.getElementById('f-name').value.trim();
+  const email= document.getElementById('f-email').value.trim();
+  const errEl= document.getElementById('panel-error');
+  const btn  = document.getElementById('save-btn');
+
+  if (!name)  { showPanelError('Name is required'); return; }
+  if (!email) { showPanelError('Email is required'); return; }
+  if (!id && !document.getElementById('f-password').value.trim()) {
+    showPanelError('Password is required for new agents'); return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  errEl.style.display = 'none';
+
+  const payload = {
+    formal_name:  name,
+    email:        email,
+    xcally_name:  document.getElementById('f-xcally-name').value.trim() || null,
+    xcally_id:    document.getElementById('f-xcally-id').value.trim()   || null,
+    agent_code:   document.getElementById('f-code').value.trim()        || null,
+    phone:        document.getElementById('f-phone').value.trim()        || null,
+    role:         document.getElementById('f-role').value,
+    status:       document.getElementById('f-status').value,
+    updated_at:   new Date().toISOString(),
+  };
+
+  if (!id) {
+    payload.password_hash = document.getElementById('f-password').value.trim();
+    payload.created_at    = new Date().toISOString();
+  }
+
+  try {
+    let agentId = id;
+
+    if (id) {
+      // Update
+      const { error } = await db.from('agents').update(payload).eq('id', id);
+      if (error) throw error;
+    } else {
+      // Insert
+      const { data, error } = await db.from('agents').insert(payload).select().single();
+      if (error) throw error;
+      agentId = data.id;
+    }
+
+    // Save annual leave
+    const year = new Date().getFullYear();
+    const entitlement = parseInt(document.getElementById('f-entitlement').value) || 21;
+    const carryOver   = parseInt(document.getElementById('f-carryover').value)   || 0;
+
+    await db.from('annual_leave').upsert({
+      agent_id:    agentId,
+      year:        year,
+      entitlement: entitlement,
+      carry_over:  carryOver,
+    }, { onConflict: 'agent_id,year' });
+
+    showToast(id ? 'Agent updated!' : 'Agent added!', 'success');
+    closePanel();
+    loadAgents();
+
+  } catch(e) {
+    showPanelError(e.message || 'Something went wrong');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Agent';
+  }
+}
+
+// ── Toggle Status ──
+async function toggleStatus(id, currentStatus) {
+  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  const action    = currentStatus === 'Active' ? 'deactivate' : 'activate';
+  const agent     = allAgents.find(a => a.id === id);
+
+  openModal(
+    `${action.charAt(0).toUpperCase()+action.slice(1)} Agent`,
+    `Are you sure you want to ${action} "${agent?.formal_name}"?`,
+    async () => {
+      try {
+        const { error } = await db.from('agents')
+          .update({ status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw error;
+        showToast(`Agent ${newStatus.toLowerCase()}!`, newStatus==='Active'?'success':'warning');
+        loadAgents();
+      } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+      }
+    }
+  );
+}
+
+// ── Delete Agent ──
+function deleteAgent(id, name) {
+  openModal(
+    'Delete Agent',
+    `Are you sure you want to permanently delete "${name}"? This cannot be undone.`,
+    async () => {
+      try {
+        const { error } = await db.from('agents').delete().eq('id', id);
+        if (error) throw error;
+        showToast('Agent deleted!', 'warning');
+        loadAgents();
+      } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+      }
+    }
+  );
+}
+
+// ── Helpers ──
+function showPanelError(msg) {
+  const el = document.getElementById('panel-error');
+  el.innerText = '⚠️ ' + msg;
+  el.style.display = 'block';
+}
+
+function openModal(title, msg, onConfirm) {
+  document.getElementById('modal-title').innerText = title;
+  document.getElementById('modal-msg').innerText   = msg;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-confirm').onclick = () => { closeModal(); onConfirm(); };
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function openPanel(t) {
+  document.getElementById('panel-overlay').classList.add('open');
+  document.getElementById('slide-panel').classList.add('open');
+}
+function closePanel() {
+  document.getElementById('panel-overlay').classList.remove('open');
+  document.getElementById('slide-panel').classList.remove('open');
+}
+
+// ── Start ──
+loadAgents();
+</script>
+
+</body>
+</html>

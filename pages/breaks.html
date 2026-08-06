@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="../logo.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOS Admin — Breaks</title>
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+.week-grid { width:100%; border-collapse:collapse; font-size:11px; }
+.week-grid th {
+  padding:8px 6px; background:var(--surface2);
+  color:var(--muted); font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);
+  text-align:center; white-space:nowrap;
+}
+.week-grid th.agent-col { text-align:left; min-width:130px; }
+.week-grid td {
+  padding:4px; border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);
+  text-align:center; vertical-align:middle;
+}
+.week-grid td.agent-col {
+  text-align:left; padding:6px 10px;
+  background:var(--surface2); font-weight:700; font-size:12px;
+}
+.week-grid tr:last-child td { border-bottom:none; }
+.break-cell { display:flex; flex-direction:column; gap:2px; padding:3px; }
+.break-time { font-size:10px; font-family:monospace; padding:2px 4px; border-radius:4px; background:var(--surface3); color:var(--muted); }
+.break-time.b1 { background:rgba(212,175,55,0.1);  color:var(--gold); }
+.break-time.ln { background:rgba(16,185,129,0.1);   color:#10B981; }
+.break-time.b2 { background:rgba(59,130,246,0.1);   color:#3B82F6; }
+
+/* ── QUEUE TIMELINE TABLE ── */
+.queue-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
+.queue-table th {
+  padding:8px 12px; background:var(--surface2);
+  color:var(--muted); font-size:10px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px;
+  border-bottom:1px solid var(--border); text-align:left;
+}
+.queue-table td {
+  padding:8px 12px; border-bottom:1px solid var(--border);
+  font-size:12px;
+}
+.queue-table tr:last-child td { border-bottom:none; }
+.queue-ok   { color:#10B981; font-weight:800; }
+.queue-warn { color:#f59e0b; font-weight:800; }
+.queue-bad  { color:#ef4444; font-weight:800; }
+.queue-bar-wrap { display:flex; align-items:center; gap:8px; }
+.queue-bar { height:10px; border-radius:5px; background:var(--surface2); flex:1; overflow:hidden; }
+.queue-bar-fill { height:100%; border-radius:5px; transition:width 0.3s; }
+</style>
+</head>
+<body>
+<div class="admin-layout">
+<aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Breaks</div>
+        <div class="breadcrumb">
+          <i class="fas fa-circle" style="font-size:5px;color:var(--gold)"></i>
+          Daily Break Management
+        </div>
+      </div>
+      <div class="topbar-right">
+        <input type="date" id="date-picker" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadBreaks()">
+        <button class="btn btn-ghost btn-sm" onclick="loadBreaks()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+          <i class="fas fa-moon"></i>
+        </button>
+        <div class="admin-chip">
+          <div class="admin-avatar" id="admin-avatar">KR</div>
+          <span class="admin-name" id="admin-name">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <div class="tabs fade-up">
+        <button class="tab-btn active" onclick="switchBreakTab('daily',this)">📅 Daily View</button>
+        <button class="tab-btn" onclick="switchBreakTab('weekly',this)">📆 Weekly View</button>
+      </div>
+
+      <div style="background:rgba(212,175,55,0.06);border:1px solid rgba(212,175,55,0.2);border-radius:14px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;" class="fade-up">
+        <i class="fas fa-info-circle" style="color:var(--gold);font-size:18px;flex-shrink:0;"></i>
+        <div style="font-size:13px;color:var(--muted);">
+          Breaks are auto-generated when you Publish a schedule.
+          <strong style="color:var(--text);">Break 1 = 15 min · Lunch = 30 min · Break 2 = 15 min</strong>
+          — Algorithm ensures minimum <strong style="color:var(--text);">2 agents on queue</strong> at all times (1 if only 3 working).
+        </div>
+      </div>
+
+      <!-- DAILY VIEW -->
+      <div id="tab-daily">
+
+        <!-- Breaks Table -->
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-coffee" style="color:var(--gold)"></i>
+              <span id="table-title">Today's Breaks</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" onclick="copyFromYesterday()">
+                <i class="fas fa-copy"></i> Copy from Yesterday
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="regenerateBreaks()">
+                <i class="fas fa-magic"></i> Regenerate from Schedule
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="saveAllBreaks()">
+                <i class="fas fa-save"></i> Save All
+              </button>
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="nos-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th><th>Shift</th>
+                    <th>☕ Break 1</th><th>🍽️ Lunch</th><th>🫖 Break 2</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="breaks-tbody">
+                  <tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Queue Timeline -->
+        <div class="section-card fade-up" id="queue-section" style="display:none;">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-chart-bar" style="color:var(--gold)"></i>
+              Queue Coverage at Break Times
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap">
+              <table class="queue-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Break Type</th>
+                    <th>Agent</th>
+                    <th>Available</th>
+                    <th>On Break</th>
+                    <th>On Queue</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="queue-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- WEEKLY VIEW — read only -->
+      <div id="tab-weekly" style="display:none;">
+        <div class="section-card fade-up">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fas fa-calendar-week" style="color:var(--gold)"></i> Weekly Breaks
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="week-select" class="form-input" style="width:auto;padding:8px 12px;" onchange="loadWeeklyBreaks()">
+                <option value="">Select Week...</option>
+              </select>
+              <span id="week-dates-label" style="font-size:12px;color:var(--muted);"></span>
+            </div>
+          </div>
+          <div class="section-body no-pad">
+            <div class="table-wrap" id="weekly-grid">
+              <div class="empty-state" style="padding:40px;">
+                <span class="empty-icon">📆</span>
+                <div>Select a week to view breaks</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/supabase.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+renderSidebar();
+applyThemeIcon();
+const session = checkAuth();
+if (session) {
+  document.getElementById('admin-name').innerText  = session.username || 'Admin';
+  document.getElementById('admin-avatar').innerText = initials(session.username || 'Admin');
+}
+
+let allAgents     = [];
+let allShiftTypes = [];
+let breaksData    = {};
+let editRows      = {};
+let workingAgents = [];
+let _lastSchedules = []; // keep schedules to build timeline
+
+document.getElementById('date-picker').value = getToday();
+
+async function init() {
+  const [agentsRes, shiftsRes] = await Promise.all([
+    db.from('agents').select('id,formal_name').eq('status','Active').order('formal_name'),
+    db.from('shift_types').select('*').eq('is_active',true)
+  ]);
+  allAgents     = agentsRes.data  || [];
+  allShiftTypes = shiftsRes.data  || [];
+  await loadBreaks();
+}
+
+// ══════════════════════════════════════════════
+// DAILY VIEW
+// ══════════════════════════════════════════════
+async function loadBreaks() {
+  const date  = document.getElementById('date-picker').value;
+  const tbody = document.getElementById('breaks-tbody');
+  document.getElementById('table-title').innerText = 'Breaks — ' + formatDate(date);
+  tbody.innerHTML = '<tr><td colspan="6"><div class="loading-wrap"><div class="spinner"></div></div></td></tr>';
+  document.getElementById('queue-section').style.display = 'none';
+  editRows = {}; workingAgents = []; _lastSchedules = [];
+
+  try {
+    const { data: schedules } = await db.from('schedule')
+      .select('agent_id,day_type,shift_type_id,shift_types(name,start_time,end_time)')
+      .eq('shift_date', date).eq('day_type','Work');
+
+    _lastSchedules = schedules || [];
+    const shiftMap = {};
+    (schedules||[]).forEach(s => { shiftMap[s.agent_id] = s; });
+    workingAgents = allAgents.filter(a => !!shiftMap[a.id]);
+
+    if (!workingAgents.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">😴</span>No agents working on this day</div></td></tr>';
+      return;
+    }
+
+    const { data: breaks } = await db.from('breaks').select('*').eq('break_date', date);
+    breaksData = {};
+    (breaks||[]).forEach(b => { breaksData[b.agent_id] = b; });
+
+    workingAgents.forEach(agent => {
+      const sch = shiftMap[agent.id];
+      const b   = breaksData[agent.id] || {};
+      editRows[agent.id] = {
+        shift:  sch?.shift_types ? formatTime(sch.shift_types.start_time)+' - '+formatTime(sch.shift_types.end_time) : '—',
+        break1: b.break1 ? b.break1.substring(0,5) : '',
+        lunch:  b.lunch  ? b.lunch.substring(0,5)  : '',
+        break2: b.break2 ? b.break2.substring(0,5) : '',
+      };
+    });
+
+    tbody.innerHTML = workingAgents.map(agent => {
+      const r = editRows[agent.id];
+      return `<tr>
+        <td><div style="display:flex;align-items:center;gap:8px;">
+          <div class="agent-avatar" style="width:28px;height:28px;font-size:10px;">${initials(agent.formal_name)}</div>
+          <span style="font-weight:700;font-size:13px;">${agent.formal_name}</span>
+        </div></td>
+        <td><span class="badge badge-success" style="font-size:11px;">${r.shift}</span></td>
+        <td><input type="text" class="form-input" style="width:90px;padding:6px 10px;font-size:13px;font-family:monospace;text-align:center;" placeholder="HH:MM" value="${r.break1}" onchange="editRows['${agent.id}'].break1=fmtTime(this.value);this.value=fmtTime(this.value);renderQueueTimeline()"></td>
+        <td><input type="text" class="form-input" style="width:90px;padding:6px 10px;font-size:13px;font-family:monospace;text-align:center;" placeholder="HH:MM" value="${r.lunch}" onchange="editRows['${agent.id}'].lunch=fmtTime(this.value);this.value=fmtTime(this.value);renderQueueTimeline()"></td>
+        <td><input type="text" class="form-input" style="width:90px;padding:6px 10px;font-size:13px;font-family:monospace;text-align:center;" placeholder="HH:MM" value="${r.break2}" onchange="editRows['${agent.id}'].break2=fmtTime(this.value);this.value=fmtTime(this.value);renderQueueTimeline()"></td>
+        <td><button class="btn btn-danger btn-sm btn-icon" onclick="clearRow('${agent.id}')" title="Clear"><i class="fas fa-times"></i></button></td>
+      </tr>`;
+    }).join('');
+
+    // render timeline automatically
+    renderQueueTimeline();
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">❌</span>Failed</div></td></tr>';
+    showToast('Failed: '+e.message,'error');
+  }
+}
+
+// ── QUEUE TIMELINE ──
+function renderQueueTimeline() {
+  if (!_lastSchedules.length || !workingAgents.length) return;
+
+  // based on agents list with times
+  const agents = _lastSchedules.filter(s=>s.shift_types).map(s=>({
+    id:        s.agent_id,
+    startMins: timeToMins(s.shift_types.start_time),
+    endMins:   timeToMins(s.shift_types.end_time),
+  }));
+
+  // based on break events from editRows
+  const breakEvents = [];
+  workingAgents.forEach(agent => {
+    const r = editRows[agent.id];
+    if (!r) return;
+    const agentSched = agents.find(a => a.id === agent.id);
+    if (!agentSched) return;
+    [
+      { time: r.break1, type: 'Break 1', dur: 15 },
+      { time: r.lunch,  type: 'Lunch',   dur: 30 },
+      { time: r.break2, type: 'Break 2', dur: 15 },
+    ].forEach(b => {
+      if (!b.time) return;
+      breakEvents.push({
+        agentId:   agent.id,
+        agentName: agent.formal_name,
+        type:      b.type,
+        startMins: timeToMins(b.time),
+        dur:       b.dur,
+      });
+    });
+  });
+
+  if (!breakEvents.length) {
+    document.getElementById('queue-section').style.display = 'none';
+    return;
+  }
+
+  // sort by time
+  breakEvents.sort((a,b) => a.startMins - b.startMins);
+
+  const maxAvail = agents.length;
+  const tbody    = document.getElementById('queue-tbody');
+  let html       = '';
+
+  breakEvents.forEach(ev => {
+    // how many agents available at break time 
+    const avail = agents.filter(a => ev.startMins >= a.startMins && ev.startMins < a.endMins).length;
+
+    // how many agents on break at same time (including this agent)
+    const onBreak = breakEvents.filter(other =>
+      other.agentId !== ev.agentId &&
+      ev.startMins < other.startMins + other.dur &&
+      ev.startMins + ev.dur > other.startMins
+    ).length + 1; // +1 for agent itself
+
+    const onQueue  = avail - onBreak;
+    const minReq   = minCoverage(avail);
+    const isWarn   = onQueue < minReq;
+    const isMin    = onQueue === minReq;
+
+    let statusIcon, statusClass, statusText;
+    if (isWarn)     { statusIcon='⚠️'; statusClass='queue-bad';  statusText='Below minimum!'; }
+    else if (isMin) { statusIcon='🟡'; statusClass='queue-warn'; statusText='At minimum'; }
+    else            { statusIcon='✅'; statusClass='queue-ok';   statusText='OK'; }
+
+    const barColor = isWarn ? '#ef4444' : isMin ? '#f59e0b' : '#10B981';
+    const barPct   = Math.round((onQueue / maxAvail) * 100);
+
+    const typeIcon = ev.type==='Break 1'?'☕':ev.type==='Lunch'?'🍽️':'🫖';
+
+    html += `<tr>
+      <td style="font-family:monospace;font-weight:700;">${minsToTimeStr(ev.startMins)}</td>
+      <td>${typeIcon} ${ev.type} <span style="font-size:10px;color:var(--muted);">(${ev.dur}min)</span></td>
+      <td style="font-weight:600;">${ev.agentName}</td>
+      <td style="color:var(--muted);font-weight:700;">${avail}</td>
+      <td style="color:var(--muted);font-weight:700;">${onBreak}</td>
+      <td>
+        <div class="queue-bar-wrap">
+          <div class="queue-bar">
+            <div class="queue-bar-fill" style="width:${barPct}%;background:${barColor};"></div>
+          </div>
+          <span class="${statusClass}">${onQueue}</span>
+        </div>
+      </td>
+      <td><span class="${statusClass}">${statusIcon} ${statusText}</span></td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+  document.getElementById('queue-section').style.display = 'block';
+}
+
+function clearRow(agentId) {
+  if (editRows[agentId]) { editRows[agentId].break1=''; editRows[agentId].lunch=''; editRows[agentId].break2=''; }
+  document.querySelectorAll('#breaks-tbody tr').forEach(row => {
+    const btn = row.querySelector(`button[onclick="clearRow('${agentId}')"]`);
+    if (btn) row.querySelectorAll('input').forEach(inp => inp.value='');
+  });
+  renderQueueTimeline();
+}
+
+async function saveAllBreaks() {
+  const date = document.getElementById('date-picker').value;
+  const btn  = document.querySelector('.btn-primary[onclick="saveAllBreaks()"]');
+  if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Saving...'; }
+  try {
+    const toSave = workingAgents
+      .filter(a => editRows[a.id]?.break1||editRows[a.id]?.lunch||editRows[a.id]?.break2)
+      .map(a => ({
+        agent_id:          a.id,
+        break_date:        date,
+        shift_time:        editRows[a.id]?.shift||null,
+        break1:            editRows[a.id]?.break1 ? editRows[a.id].break1+':00':null,
+        lunch:             editRows[a.id]?.lunch  ? editRows[a.id].lunch+':00' :null,
+        break2:            editRows[a.id]?.break2 ? editRows[a.id].break2+':00':null,
+        scheduled_break1:  editRows[a.id]?.sched_break1 ? editRows[a.id].sched_break1+':00' : (editRows[a.id]?.break1 ? editRows[a.id].break1+':00':null),
+        scheduled_lunch:   editRows[a.id]?.sched_lunch  ? editRows[a.id].sched_lunch+':00'  : (editRows[a.id]?.lunch  ? editRows[a.id].lunch+':00' :null),
+        scheduled_break2:  editRows[a.id]?.sched_break2 ? editRows[a.id].sched_break2+':00' : (editRows[a.id]?.break2 ? editRows[a.id].break2+':00':null),
+        updated_at:        new Date().toISOString(),
+      }));
+    if (toSave.length) {
+      const { error } = await db.from('breaks').upsert(toSave,{onConflict:'agent_id,break_date'});
+      if (error) throw error;
+    }
+    showToast('Breaks saved for '+toSave.length+' agent(s)!','success');
+  } catch(e) { showToast('Save failed: '+e.message,'error');
+  } finally {
+    if (btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-save"></i> Save All'; }
+  }
+}
+
+async function copyFromYesterday() {
+  const date = document.getElementById('date-picker').value;
+  const y = new Date(date+'T00:00:00'); y.setDate(y.getDate()-1);
+  const yStr = y.toISOString().split('T')[0];
+  try {
+    const { data } = await db.from('breaks').select('*').eq('break_date',yStr);
+    if (!data||!data.length) { showToast('No breaks found for yesterday','warning'); return; }
+    let copied=0;
+    data.forEach(b => {
+      if (editRows[b.agent_id]) {
+        editRows[b.agent_id].break1=b.break1?b.break1.substring(0,5):'';
+        editRows[b.agent_id].lunch =b.lunch ?b.lunch.substring(0,5) :'';
+        editRows[b.agent_id].break2=b.break2?b.break2.substring(0,5):'';
+        // حفظ scheduled columns من أمس لو مش موجودة
+        editRows[b.agent_id].sched_break1 = b.break1 ? b.break1.substring(0,5) : '';
+        editRows[b.agent_id].sched_lunch  = b.lunch  ? b.lunch.substring(0,5)  : '';
+        editRows[b.agent_id].sched_break2 = b.break2 ? b.break2.substring(0,5) : '';
+        copied++;
+      }
+    });
+    const rows=document.querySelectorAll('#breaks-tbody tr');
+    workingAgents.forEach((agent,idx)=>{
+      const row=rows[idx]; if(!row)return;
+      const inp=row.querySelectorAll('input');
+      if(inp.length>=3){inp[0].value=editRows[agent.id].break1;inp[1].value=editRows[agent.id].lunch;inp[2].value=editRows[agent.id].break2;}
+    });
+    renderQueueTimeline();
+    showToast('Copied breaks for '+copied+' agent(s)!','success');
+  } catch(e) { showToast('Failed: '+e.message,'error'); }
+}
+
+async function regenerateBreaks() {
+  const date = document.getElementById('date-picker').value;
+  openModal('Regenerate Breaks',
+    'Recalculate all breaks for '+formatDate(date)+'? Existing breaks will be overwritten.',
+    async () => {
+      const btn=document.querySelector('.btn-ghost[onclick="regenerateBreaks()"]');
+      if(btn){btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i>';}
+      try {
+        const{data:schedules}=await db.from('schedule')
+          .select('agent_id,shift_type_id,shift_types(name,start_time,end_time)')
+          .eq('shift_date',date).eq('day_type','Work');
+        if(!schedules||!schedules.length){showToast('No working agents found','warning');return;}
+        const upserts=calculateBreaks(schedules,date);
+        if(upserts.length){
+          const{error}=await db.from('breaks').upsert(upserts,{onConflict:'agent_id,break_date'});
+          if(error)throw error;
+        }
+        showToast('Breaks regenerated for '+upserts.length+' agent(s)!','success');
+        await loadBreaks();
+      } catch(e){showToast('Failed: '+e.message,'error');}
+      finally{if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-magic"></i> Regenerate from Schedule';}}
+    }
+  );
+}
+
+
+// ══════════════════════════════════════════════
+// WEEKLY VIEW — read only
+// ══════════════════════════════════════════════
+function switchBreakTab(tab,btn) {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-daily').style.display =tab==='daily' ?'block':'none';
+  document.getElementById('tab-weekly').style.display=tab==='weekly'?'block':'none';
+  if(tab==='weekly') loadWeekSelectOptions();
+}
+
+async function loadWeekSelectOptions() {
+  const sel=document.getElementById('week-select');
+  if(sel.options.length>1) return;
+  try {
+    const{data}=await db.from('schedule_weeks').select('*').order('week_start',{ascending:false});
+    (data||[]).forEach(w=>{
+      const wn=getISOWeek(new Date(w.week_start+'T00:00:00'));
+      const opt=new Option('Week '+wn+'  ('+formatDateShort(w.week_start)+' → '+formatDateShort(w.week_end)+')',w.id);
+      opt.dataset.start=w.week_start; opt.dataset.end=w.week_end;
+      sel.add(opt);
+    });
+  } catch(e){showToast('Failed to load weeks','error');}
+}
+
+async function loadWeeklyBreaks() {
+  const sel=document.getElementById('week-select');
+  const weekId=sel.value;
+  const gridEl=document.getElementById('weekly-grid');
+  if(!weekId) return;
+  const opt=sel.selectedOptions[0];
+  const start=opt.dataset.start, end=opt.dataset.end;
+  document.getElementById('week-dates-label').innerText=formatDateShort(start)+' → '+formatDateShort(end);
+  gridEl.innerHTML='<div class="loading-wrap"><div class="spinner"></div></div>';
+  const todayIso=getToday();
+
+  try {
+    const dates=getWeekDates(start,end);
+    const{data:schedules}=await db.from('schedule')
+      .select('agent_id,shift_date,day_type,shift_types(name,start_time,end_time)')
+      .eq('week_id',weekId).eq('day_type','Work');
+    const{data:breaks}=await db.from('breaks').select('*').gte('break_date',start).lte('break_date',end);
+
+    const workingIds=new Set((schedules||[]).map(s=>s.agent_id));
+    const wAgents=allAgents.filter(a=>workingIds.has(a.id));
+    if(!wAgents.length){
+      gridEl.innerHTML='<div class="empty-state" style="padding:40px;"><span class="empty-icon">📭</span>No working agents this week</div>';
+      return;
+    }
+
+    const breaksMap={};
+    (breaks||[]).forEach(b=>{breaksMap[b.agent_id+'_'+b.break_date]=b;});
+    const schedMap={};
+    (schedules||[]).forEach(s=>{schedMap[s.agent_id+'_'+s.shift_date]=s;});
+
+    let html='<table class="week-grid"><thead><tr><th class="agent-col">Agent</th>';
+    dates.forEach(d=>{
+      const isTd=d.iso===todayIso;
+      html+=`<th style="${isTd?'color:var(--gold);':''}"><div style="display:flex;flex-direction:column;align-items:center;gap:2px;"><span style="font-size:10px;font-weight:700;">${d.dayName}</span><span style="font-size:9px;color:var(--muted);">${d.display}</span></div></th>`;
+    });
+    html+='</tr></thead><tbody>';
+
+    wAgents.forEach(agent=>{
+      html+=`<tr><td class="agent-col"><div style="display:flex;align-items:center;gap:6px;"><div class="agent-avatar" style="width:24px;height:24px;font-size:9px;flex-shrink:0;">${initials(agent.formal_name)}</div><span style="font-size:12px;">${agent.formal_name}</span></div></td>`;
+      dates.forEach(d=>{
+        const isWorking=!!schedMap[agent.id+'_'+d.iso];
+        const b=breaksMap[agent.id+'_'+d.iso];
+        if(!isWorking){
+          html+=`<td style="background:var(--surface2);text-align:center;"><span style="font-size:10px;color:var(--border2);">—</span></td>`;
+        } else if(b&&(b.break1||b.lunch||b.break2)){
+          html+=`<td><div class="break-cell">
+            <span class="break-time b1">☕ ${b.break1?b.break1.substring(0,5):'—'}</span>
+            <span class="break-time ln">🍽 ${b.lunch ?b.lunch.substring(0,5) :'—'}</span>
+            <span class="break-time b2">🫖 ${b.break2?b.break2.substring(0,5):'—'}</span>
+          </div></td>`;
+        } else {
+          html+=`<td style="text-align:center;"><span style="font-size:10px;color:var(--muted);">Not set</span></td>`;
+        }
+      });
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    gridEl.innerHTML=html;
+  } catch(e){
+    gridEl.innerHTML=`<div class="empty-state"><span class="empty-icon">❌</span>Failed: ${e.message}</div>`;
+    showToast('Failed: '+e.message,'error');
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  STAGGERED BREAK SCHEDULING ALGORITHM  v2.0
+// ════════════════════════════════════════════════════════════════
+function availableAt(agents,timeMins){return agents.filter(a=>timeMins>=a.startMins&&timeMins<a.endMins).length;}
+function minCoverage(n){if(n>=4)return 2;if(n===3)return 1;return 0;}
+function onBreakAt(assignments,timeMins){
+  let count=0;
+  for(const agentId of Object.keys(assignments)){
+    if(agentId==='_agents')continue;
+    for(const brk of assignments[agentId]){
+      if(timeMins>=brk.start&&timeMins<brk.start+brk.duration){count++;break;}
+    }
+  }
+  return count;
+}
+function canPlace(slotMins,duration,agentStart,agentEnd,assignments){
+  if(slotMins<agentStart+60||slotMins>agentEnd-60-duration)return false;
+  const agents=assignments._agents||[];
+  for(let t=slotMins;t<slotMins+duration;t++){
+    const avail=availableAt(agents,t);
+    const onBreak=onBreakAt(assignments,t);
+    if(avail-(onBreak+1)<minCoverage(avail)+1)return false;
+  }
+  return true;
+}
+function findBestSlot(ideal,duration,agentStart,agentEnd,assignments){
+  const r=roundToQuarter(ideal);
+  function slotTaken(slot){
+    const agents=assignments._agents||[];
+    for(const agentId of Object.keys(assignments)){
+      if(agentId==='_agents')continue;
+      const other=agents.find(a=>a.agent_id===agentId);
+      if(!other)continue;
+      if(other.startMins===agentStart&&other.endMins===agentEnd){
+        for(const brk of assignments[agentId]){
+          if(brk.duration===duration&&brk.start===slot)return true;
+        }
+      }
+    }
+    return false;
+  }
+  if(canPlace(r,duration,agentStart,agentEnd,assignments)&&!slotTaken(r))return r;
+  for(let d=15;d<=180;d+=15){
+    const fwd=r+d,bwd=r-d;
+    if(fwd<=agentEnd-60-duration&&canPlace(fwd,duration,agentStart,agentEnd,assignments)&&!slotTaken(fwd))return fwd;
+    if(bwd>=agentStart+60&&canPlace(bwd,duration,agentStart,agentEnd,assignments)&&!slotTaken(bwd))return bwd;
+  }
+  return r;
+}
+function registerBreak(assignments,agentId,startMins,duration){
+  if(!assignments[agentId])assignments[agentId]=[];
+  assignments[agentId].push({start:startMins,duration});
+}
+function calculateBreaks(schedules,date){
+  const agents=schedules.filter(s=>s.shift_types).map(s=>({
+    agent_id: s.agent_id,
+    start_str:s.shift_types.start_time.substring(0,5),
+    end_str:  s.shift_types.end_time.substring(0,5),
+    startMins:timeToMins(s.shift_types.start_time),
+    endMins:  timeToMins(s.shift_types.end_time),
+  }));
+  if(!agents.length)return[];
+  agents.sort((a,b)=>a.startMins-b.startMins);
+  const assignments={_agents:agents};
+  const BREAK_TYPES=[
+    {key:'break1',duration:15,ratio:0.30},
+    {key:'lunch', duration:30,ratio:0.55},
+    {key:'break2',duration:15,ratio:0.80},
+  ];
+  const result={};
+  for(const bt of BREAK_TYPES){
+    for(const agent of agents){
+      const w=(agent.endMins-60)-(agent.startMins+60);
+      const ideal=agent.startMins+60+Math.floor(w*bt.ratio);
+      const slot=findBestSlot(ideal,bt.duration,agent.startMins,agent.endMins,assignments);
+      registerBreak(assignments,agent.agent_id,slot,bt.duration);
+      if(!result[agent.agent_id])result[agent.agent_id]={};
+      result[agent.agent_id][bt.key]=slot;
+    }
+  }
+  return agents.map(agent=>{
+    const r=result[agent.agent_id]||{};
+    const b1 = r.break1!=null?minsToTime(r.break1):null;
+    const ln = r.lunch !=null?minsToTime(r.lunch) :null;
+    const b2 = r.break2!=null?minsToTime(r.break2):null;
+    return{
+      agent_id:         agent.agent_id,
+      break_date:       date,
+      shift_time:       agent.start_str+' - '+agent.end_str,
+      break1:           b1,
+      lunch:            ln,
+      break2:           b2,
+      scheduled_break1: b1,
+      scheduled_lunch:  ln,
+      scheduled_break2: b2,
+      updated_at:       new Date().toISOString(),
+    };
+  });
+}
+
+
+// ── HELPERS ──
+function timeToMins(t){if(!t)return 0;const p=t.substring(0,5).split(':');return(+p[0])*60+(+p[1]);}
+function minsToTime(m){return Math.floor(m/60).toString().padStart(2,'0')+':'+(m%60).toString().padStart(2,'0')+':00';}
+function minsToTimeStr(m){return Math.floor(m/60).toString().padStart(2,'0')+':'+(m%60).toString().padStart(2,'0');}
+function roundToQuarter(m){return Math.round(m/15)*15;}
+function fmtTime(v){if(!v)return'';const m=v.match(/^(\d{1,2}):(\d{2})/);if(!m)return v;return String(parseInt(m[1])).padStart(2,'0')+':'+m[2];}
+function formatDate(d){if(!d)return'—';return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});}
+function formatTime(t){return t?t.substring(0,5):'—';}
+function formatDateShort(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');}
+function getWeekDates(start,end){
+  const dates=[],days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let cur=new Date(start+'T00:00:00'),endDate=new Date(end+'T00:00:00');
+  while(cur<=endDate){
+    const iso=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    dates.push({iso,dayName:days[cur.getDay()],display:String(cur.getDate()).padStart(2,'0')+'/'+String(cur.getMonth()+1).padStart(2,'0')});
+    cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+function openModal(title,msg,onConfirm){document.getElementById('modal-title').innerText=title;document.getElementById('modal-msg').innerText=msg;document.getElementById('modal-overlay').classList.add('open');document.getElementById('modal-confirm').onclick=()=>{closeModal();onConfirm();};}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()+3-(d.getDay()+6)%7);const w1=new Date(d.getFullYear(),0,4);return 1+Math.round(((d-w1)/86400000-3+(w1.getDay()+6)%7)/7);}
+
+init();
+</script>
+</body>
+</html>
